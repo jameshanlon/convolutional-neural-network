@@ -6,5 +6,11 @@ nn: main.cpp
 nn-dbg: main.cpp
 	$(CXX) -std=c++11 -g -O0 $< -o $@
 
+nn2: main2.cpp
+	$(CXX) -std=c++11 -O3 $< -o $@
+
+nn2-dbg: main2.cpp
+	$(CXX) -std=c++11 -g -O0 $< -o $@
+
 clean:
 	rm -f nn
