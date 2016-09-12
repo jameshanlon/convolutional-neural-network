@@ -6,6 +6,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <memory>
 #include <random>
 #include <vector>
@@ -305,10 +306,10 @@ public:
     for (unsigned epoch = 0; epoch < numEpochs; ++epoch) {
       // Identically randomly shuffle the training images and labels.
       unsigned seed = std::time(nullptr);
-      std::srand(seed);
-      std::random_shuffle(trainingImages.begin(), trainingImages.end());
-      std::srand(seed);
-      std::random_shuffle(trainingLabels.begin(), trainingLabels.end());
+      std::shuffle(trainingLabels.begin(), trainingLabels.end(),
+                   std::default_random_engine(seed));
+      std::shuffle(trainingImages.begin(), trainingImages.end(),
+                   std::default_random_engine(seed));
       // For each mini batch.
       for (unsigned i = 0, end = trainingImages.size(); i < end; i += mbSize) {
         //std::cout << "\rUpdate minibatch: " << i << " / " << end;
