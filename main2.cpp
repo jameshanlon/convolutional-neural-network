@@ -6,15 +6,22 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <memory>
 #include <random>
 #include <vector>
 
 using Image = std::vector<float>;
 
-const unsigned numEpochs = 30;
+const unsigned numEpochs = 100;
 const unsigned mbSize = 10;
-const float learningRate = 3.0;
+const float learningRate = 3.0f;
+const float lambda = 5.0f;
+const unsigned validationSize = 1000;
+const bool monitorEvaluationAccuracy = false;
+const bool monitorEvaluationCost = false;
+const bool monitorTrainingAccuracy = true;
+const bool monitorTrainingCost = false;
 
 static void readLabels(const char *filename,
                        std::vector<uint8_t> &labels) {
@@ -174,7 +181,7 @@ public:
     errors[mbIndex] = error;
   }
 
-  void endBatch(float learningRate) {
+  void endBatch(float learningRate, float lambda, unsigned numTrainingImages) {
     // For each weight.
     for (unsigned i = 0; i < inputs->size(); ++i) {
       float weightDelta = 0.0f;
@@ -183,16 +190,17 @@ public:
       for (unsigned j = 0; j < mbSize; ++j) {
         weightDelta += inputs->at(i).getOutput(j) * errors[j];
       }
-      weightDelta *= learningRate / static_cast<float>(mbSize);
+      weightDelta *= learningRate / mbSize;
+      weights[i] *= 1.0f - (learningRate * (lambda / numTrainingImages));
       weights[i] -= weightDelta;
     }
     // For each batch element, average the errors (error is equal to rate of
     // change of cost w.r.t. bias) and multiply by learning rate.
-    float biasDelta = 0;
+    float biasDelta = 0.0f;
     for (unsigned j = 0; j < mbSize; ++j) {
       biasDelta += errors[j];
     }
-    biasDelta *= learningRate / static_cast<float>(mbSize);
+    biasDelta *= learningRate / mbSize;
     bias -= biasDelta;
   }
 
@@ -205,6 +213,7 @@ public:
   void setOutput(unsigned i, float value) {
     activations[i] = value;
   }
+  unsigned numInputs() { return inputs->size(); }
   /// Get output of batch element mbIndex.
   float getOutput(unsigned mbIndex) { return activations[mbIndex]; }
   /// Get error of batch element i.
@@ -245,15 +254,21 @@ class Network {
     return result;
   }
 
+  /// The forward pass.
+  void feedForward(Image &image, unsigned batch) {
+    for (unsigned j = 1; j < layers.size(); ++j) {
+      for (auto &neuron : layers[j]) {
+        neuron.forwardBatch(batch);
+      }
+    }
+  }
+
+  /// The backward pass.
   void backprop(Image &image, uint8_t label, unsigned mbIndex) {
     // Set input.
     setInput(image, mbIndex);
     // Feed forward.
-    for (unsigned i = 1; i < layers.size(); ++i) {
-      for (auto &neuron : layers[i]) {
-        neuron.forwardBatch(mbIndex);
-      }
-    }
+    feedForward(image, mbIndex);
     // Compute output error (last layer).
     for (auto &neuron : layers.back()) {
       neuron.computeOutputError(label, mbIndex);
@@ -268,7 +283,9 @@ class Network {
 
   void updateMiniBatch(std::vector<Image>::iterator trainingImagesIt,
                        std::vector<uint8_t>::iterator trainingLabelsIt,
-                       float learningRate) {
+                       float learningRate,
+                       float lambda,
+                       unsigned numTrainingImages) {
     // For each training image and label, backpropogate.
     for (unsigned i = 0; i < mbSize; ++i) {
       backprop(*(trainingImagesIt + i), *(trainingLabelsIt + i), i);
@@ -276,7 +293,7 @@ class Network {
     // Gradient descent: for every neuron, compute the new weights and biases.
     for (unsigned i = layers.size() - 1; i > 0; --i) {
       for (auto &neuron : layers[i]) {
-        neuron.endBatch(learningRate);
+        neuron.endBatch(learningRate, lambda, numTrainingImages);
       }
     }
   }
@@ -314,19 +331,13 @@ public:
   }
 
   /// Evaluate the test set and return the number of correct classifications.
-  unsigned evaluate(std::vector<Image> &testImages,
+  unsigned evaluateAccuracy(std::vector<Image> &testImages,
                     std::vector<uint8_t> &testLabels) {
     unsigned result = 0;
     for (unsigned i = 0; i < testImages.size(); ++i) {
       //std::cout << "\rTest image " << i;
       setInput(testImages[i], 0);
-      // Calculate the activations for each neuron, for each layer in sequence.
-      for (unsigned j = 1; j < layers.size(); ++j) {
-        for (auto &neuron : layers[j]) {
-          neuron.forwardBatch(0);
-        }
-      }
-      // Read the output.
+      feedForward(testImages[i], 0);
       if (readOutput() == testLabels[i]) {
         ++result;
       }
@@ -335,32 +346,85 @@ public:
     return result;
   }
 
+  float sumSquareWeights() {
+    float result = 0.0f;
+    for (unsigned i = 1; i < layers.size(); ++i) {
+      for (auto &neuron : layers[i]) {
+        for (unsigned j = 0; j < neuron.numInputs(); ++j) {
+          result += std::pow(neuron.getWeight(j), 2.0f);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Calculate the total cost for a dataset.
+  float evaluateTotalCost(std::vector<Image> &images,
+                          std::vector<uint8_t> &labels,
+                          float lambda) {
+    float cost = 0.0f;
+    for (unsigned i = 0; i < images.size(); ++i) {
+      setInput(images[i], 0);
+      feedForward(images[i], 0);
+      // For each output activation.
+      for (unsigned i = 0; i < layers.back().size(); ++i) {
+        float output = layers.back()[i].getOutput(0);
+        cost += costFn(output, labels[i]) / images.size();
+      }
+      // Add the regularisation term.
+      cost += 0.5f * (lambda / images.size()) * sumSquareWeights();
+    }
+    return cost;
+  }
+
   void SGD(std::vector<Image> &trainingImages,
            std::vector<uint8_t> &trainingLabels,
+           std::vector<Image> &validationImages,
+           std::vector<uint8_t> &validationLabels,
            std::vector<Image> &testImages,
            std::vector<uint8_t> &testLabels,
            unsigned numEpochs,
-           float learningRate) {
+           float learningRate,
+           float lambda) {
     // For each epoch.
     for (unsigned epoch = 0; epoch < numEpochs; ++epoch) {
       // Identically randomly shuffle the training images and labels.
       unsigned seed = std::time(nullptr);
-      std::srand(seed);
-      std::random_shuffle(trainingImages.begin(), trainingImages.end());
-      std::srand(seed);
-      std::random_shuffle(trainingLabels.begin(), trainingLabels.end());
+      std::shuffle(trainingLabels.begin(), trainingLabels.end(),
+                   std::default_random_engine(seed));
+      std::shuffle(trainingImages.begin(), trainingImages.end(),
+                   std::default_random_engine(seed));
       // For each mini batch.
       for (unsigned i = 0, end = trainingImages.size(); i < end; i += mbSize) {
         //std::cout << "\rUpdate minibatch: " << i << " / " << end;
         updateMiniBatch(trainingImages.begin() + i,
                         trainingLabels.begin() + i,
-                        learningRate);
+                        learningRate,
+                        lambda,
+                        trainingImages.size());
       }
       //std::cout << '\n';
       // Evaluate the test set.
-      unsigned result = evaluate(testImages, testLabels);
-      std::cout << "Epoch " << epoch << ": "
-                << result << " / " << testImages.size() << '\n';
+      std::cout << "Epoch " << epoch << " complete.\n";
+      if (monitorEvaluationAccuracy) {
+        unsigned result = evaluateAccuracy(validationImages, validationLabels);
+        std::cout << "Accuracy on evaluation data: "
+                  << result << " / " << validationImages.size() << '\n';
+      }
+      if (monitorEvaluationCost) {
+        float cost = evaluateTotalCost(validationImages, validationLabels,
+                                       lambda);
+        std::cout << "Cost on evaluation data: " << cost << "\n";
+      }
+      if (monitorTrainingAccuracy) {
+        unsigned result = evaluateAccuracy(testImages, testLabels);
+        std::cout << "Accuracy on training data: "
+                  << result << " / " << testImages.size() << '\n';
+      }
+      if (monitorTrainingCost) {
+        float cost = evaluateTotalCost(testImages, testLabels, lambda);
+        std::cout << "Cost on test data: " << cost << "\n";
+      }
     }
   }
 };
@@ -381,15 +445,28 @@ int main(int argc, char **argv) {
   readImages("train-images-idx3-ubyte", trainingImages);
   readImages("t10k-images-idx3-ubyte", testImages);
 
+  // Take images from the training set for validation.
+  std::vector<uint8_t> validationLabels(trainingLabels.end() - validationSize,
+                                        trainingLabels.end());
+  std::vector<Image> validationImages(trainingImages.end() - validationSize,
+                                      trainingImages.end());
+  trainingLabels.erase(trainingLabels.end() - validationSize,
+                       trainingLabels.end());
+  trainingImages.erase(trainingImages.end() - validationSize,
+                       trainingImages.end());
+
   std::cout << "Creating the network\n";
-  Network<mbSize, QuadraticCost::compute, QuadraticCost::delta>
+  Network<mbSize, CrossEntropyCost::compute, CrossEntropyCost::delta>
     network({28*28, 30, 10});
   std::cout << "Running...\n";
   network.SGD(trainingImages,
               trainingLabels,
+              validationImages,
+              validationLabels,
               testImages,
               testLabels,
               numEpochs,
-              learningRate);
+              learningRate,
+              lambda);
   return 0;
 }
