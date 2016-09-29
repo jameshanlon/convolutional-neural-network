@@ -15,13 +15,13 @@ using Image = std::vector<float>;
 
 const unsigned numEpochs = 100;
 const unsigned mbSize = 10;
-const float learningRate = 3.0f;
+const float learningRate = 1.0f;
 const float lambda = 5.0f;
 const unsigned validationSize = 1000;
 const bool monitorEvaluationAccuracy = false;
 const bool monitorEvaluationCost = false;
 const bool monitorTrainingAccuracy = true;
-const bool monitorTrainingCost = false;
+const bool monitorTrainingCost = true;
 
 static void readLabels(const char *filename,
                        std::vector<uint8_t> &labels) {
@@ -148,7 +148,7 @@ public:
   void initialiseLargeWeights() {
     // Just using random numbers as above.
     static std::default_random_engine generator(std::time(nullptr));
-    std::normal_distribution<float> distribution(0, 1.0);
+    std::normal_distribution<float> distribution(0, 1.0f);
     for (unsigned i = 0; i < inputs->size(); ++i) {
       weights.push_back(distribution(generator));
     }
@@ -213,7 +213,7 @@ public:
   void setOutput(unsigned i, float value) {
     activations[i] = value;
   }
-  unsigned numInputs() { return inputs->size(); }
+  unsigned numWeights() { return weights.size(); }
   /// Get output of batch element mbIndex.
   float getOutput(unsigned mbIndex) { return activations[mbIndex]; }
   /// Get error of batch element i.
@@ -332,7 +332,7 @@ public:
 
   /// Evaluate the test set and return the number of correct classifications.
   unsigned evaluateAccuracy(std::vector<Image> &testImages,
-                    std::vector<uint8_t> &testLabels) {
+                            std::vector<uint8_t> &testLabels) {
     unsigned result = 0;
     for (unsigned i = 0; i < testImages.size(); ++i) {
       //std::cout << "\rTest image " << i;
@@ -350,7 +350,7 @@ public:
     float result = 0.0f;
     for (unsigned i = 1; i < layers.size(); ++i) {
       for (auto &neuron : layers[i]) {
-        for (unsigned j = 0; j < neuron.numInputs(); ++j) {
+        for (unsigned j = 0; j < neuron.numWeights(); ++j) {
           result += std::pow(neuron.getWeight(j), 2.0f);
         }
       }
@@ -367,8 +367,8 @@ public:
       setInput(images[i], 0);
       feedForward(images[i], 0);
       // For each output activation.
-      for (unsigned i = 0; i < layers.back().size(); ++i) {
-        float output = layers.back()[i].getOutput(0);
+      for (unsigned j = 0; j < layers.back().size(); ++j) {
+        float output = layers.back()[j].getOutput(0);
         cost += costFn(output, labels[i]) / images.size();
       }
       // Add the regularisation term.
@@ -457,7 +457,7 @@ int main(int argc, char **argv) {
 
   std::cout << "Creating the network\n";
   Network<mbSize, CrossEntropyCost::compute, CrossEntropyCost::delta>
-    network({28*28, 30, 10});
+    network({28*28, 100, 10});
   std::cout << "Running...\n";
   network.SGD(trainingImages,
               trainingLabels,
