@@ -13,6 +13,35 @@
 
 using Image = std::vector<float>;
 
+static float sigmoid(float z) {
+  return 1.0f / (1.0f + std::exp(-z));
+}
+
+/// Derivative of the sigmoid function.
+static float sigmoidDerivative(float z) {
+  return sigmoid(z) * (1.0f - sigmoid(z));
+}
+
+struct QuadraticCost {
+  static float compute(float activation, float label) {
+    return 0.5f * std::pow(std::abs(activation - label), 2);
+  }
+  static float delta(float z, float activation, float label) {
+    return (activation - label) * sigmoidDerivative(z);
+  }
+};
+
+struct CrossEntropyCost {
+  static float compute(float activation, float label) {
+    return (-label * std::log(activation))
+             - ((1.0f - label) * std::log(1.0f - activation));
+  }
+  static float delta(float z, float activation, float label) {
+    return activation - label;
+  }
+};
+
+// Globals and constants.
 const unsigned numEpochs = 100;
 const unsigned mbSize = 10;
 const float learningRate = 1.0f;
@@ -22,6 +51,8 @@ const bool monitorEvaluationAccuracy = false;
 const bool monitorEvaluationCost = false;
 const bool monitorTrainingAccuracy = true;
 const bool monitorTrainingCost = true;
+float (*costFn)(float, float) = CrossEntropyCost::compute;
+float (*costDelta)(float, float, float) = CrossEntropyCost::delta;
 
 static void readLabels(const char *filename,
                        std::vector<uint8_t> &labels) {
@@ -84,59 +115,17 @@ static void readImages(const char *filename,
   file.close();
 }
 
-static float sigmoid(float z) {
-  return 1.0f / (1.0f + std::exp(-z));
-}
-
-/// Derivative of the sigmoid function.
-static float sigmoidDerivative(float z) {
-  return sigmoid(z) * (1.0f - sigmoid(z));
-}
-
-struct QuadraticCost {
-  static float compute(float activation, float label) {
-    return 0.5f * std::pow(std::abs(activation - label), 2);
-  }
-  static float delta(float z, float activation, float label) {
-    return (activation - label) * sigmoidDerivative(z);
-  }
-};
-
-struct CrossEntropyCost {
-  static float compute(float activation, float label) {
-    return (-label * std::log(activation))
-            - ((1.0f - label) * std::log(1.0f - activation));
-  }
-  static float delta(float z, float activation, float label) {
-    return activation - label;
-  }
-};
-
-template<
-  int mbSize,
-  float (*costFn)(float, float),
-  float (*costDelta)(float, float, float)>
 class Neuron;
 
-template<
-  int mbSize,
-  float (*costFn)(float, float),
-  float (*costDelta)(float, float, float)>
 class Layer {
-  using NeuronT = Neuron<mbSize, costFn, costDelta>;
 public:
   virtual unsigned size() = 0;
-  virtual NeuronT& getNeuron(unsigned index) = 0;
+  virtual Neuron &getNeuron(unsigned index) = 0;
 };
 
-template<
-  int mbSize,
-  float (*costFn)(float, float),
-  float (*costDelta)(float, float, float)>
 class Neuron {
-  using LayerT = Layer<mbSize, costFn, costDelta>;
-  LayerT *inputs;
-  LayerT *outputs;
+  Layer *inputs;
+  Layer *outputs;
   std::vector<float> weights;
   float bias;
   unsigned index;
@@ -211,7 +200,7 @@ public:
     errors[mbIndex] = error;
   }
 
-  void endBatch(float learningRate, float lambda, unsigned numTrainingImages) {
+  void endBatch(unsigned numTrainingImages) {
     // For each weight.
     for (unsigned i = 0; i < inputs->size(); ++i) {
       float weightDelta = 0.0f;
@@ -234,8 +223,8 @@ public:
     bias -= biasDelta;
   }
 
-  void setInputs(LayerT *inputs) { this->inputs = inputs;  }
-  void setOutputs(LayerT *outputs) { this->outputs = outputs; }
+  void setInputs(Layer *inputs) { this->inputs = inputs;  }
+  void setOutputs(Layer *outputs) { this->outputs = outputs; }
   void setOutput(unsigned i, float value) { activations[i] = value; }
   unsigned numWeights() { return weights.size(); }
   float getOutput(unsigned mbIndex) { return activations[mbIndex]; }
@@ -243,19 +232,13 @@ public:
   float getWeight(unsigned i) { return weights.at(i); }
 };
 
-template<
-  int mbSize,
-  float (*costFn)(float, float),
-  float (*costDelta)(float, float, float)>
-class FullyConnectedLayer : public Layer<mbSize, costFn, costDelta> {
-  using LayerT = Layer<mbSize, costFn, costDelta>;
-  using NeuronT = Neuron<mbSize, costFn, costDelta>;
-  std::vector<NeuronT> neurons;
+class FullyConnectedLayer : public Layer {
+  std::vector<Neuron> neurons;
 
 public:
   FullyConnectedLayer(unsigned size) {
     for (unsigned i = 0; i < size; ++i) {
-      neurons.push_back(NeuronT(i));
+      neurons.push_back(Neuron(i));
     }
   };
 
@@ -289,13 +272,13 @@ public:
     return result;
   }
 
-  void setInputs(LayerT *layer) {
+  void setInputs(Layer *layer) {
     for (auto &neuron : neurons) {
       neuron.setInputs(layer);
     }
   }
 
-  void setOutputs(LayerT *layer) {
+  void setOutputs(Layer *layer) {
     for (auto &neuron : neurons) {
       neuron.setOutputs(layer);
     }
@@ -333,27 +316,18 @@ public:
     }
   }
 
-  void endBatch(float learningRate, float lambda, unsigned numTrainingImages) {
+  void endBatch(unsigned numTrainingImages) {
     for (auto &neuron : neurons) {
-      neuron.endBatch(learningRate, lambda, numTrainingImages);
+      neuron.endBatch(numTrainingImages);
     }
   }
 
-  NeuronT &getNeuron(unsigned index) override {
-    return neurons[index];
-  }
-
+  Neuron &getNeuron(unsigned index) override { return neurons[index]; }
   unsigned size() override { return neurons.size(); }
 };
 
-template<
-  int mbSize,
-  float (*costFn)(float, float),
-  float (*costDelta)(float, float, float)
->
 class Network {
-  using FullyConnectedLayerT = FullyConnectedLayer<mbSize, costFn, costDelta>;
-  std::vector<FullyConnectedLayerT> layers;
+  std::vector<FullyConnectedLayer> layers;
 
   /// Set the activations of the input neurons with an image.
   void setImage(Image &image, unsigned mbIndex) {
@@ -388,8 +362,6 @@ class Network {
 
   void updateMiniBatch(std::vector<Image>::iterator trainingImagesIt,
                        std::vector<uint8_t>::iterator trainingLabelsIt,
-                       float learningRate,
-                       float lambda,
                        unsigned numTrainingImages) {
     // For each training image and label, backPropogateogate.
     for (unsigned i = 0; i < mbSize; ++i) {
@@ -397,17 +369,17 @@ class Network {
     }
     // Gradient descent: for every neuron, compute the new weights and biases.
     for (unsigned i = layers.size() - 1; i > 0; --i) {
-      layers[i].endBatch(learningRate, lambda, numTrainingImages);
+      layers[i].endBatch(numTrainingImages);
     }
   }
 
 public:
   Network(const std::vector<unsigned> sizes) {
     // Create the input layer.
-    layers.push_back(FullyConnectedLayerT(sizes[0]));
+    layers.push_back(FullyConnectedLayer(sizes[0]));
     // For each remaining layer.
     for (unsigned i = 1; i < sizes.size(); ++i) {
-      layers.push_back(FullyConnectedLayerT(sizes[i]));
+      layers.push_back(FullyConnectedLayer(sizes[i]));
     }
     // Set neuron inputs.
     for (unsigned i = 1; i < layers.size(); ++i) {
@@ -446,8 +418,7 @@ public:
 
   /// Calculate the total cost for a dataset.
   float evaluateTotalCost(std::vector<Image> &images,
-                          std::vector<uint8_t> &labels,
-                          float lambda) {
+                          std::vector<uint8_t> &labels) {
     float cost = 0.0f;
     for (unsigned i = 0; i < images.size(); ++i) {
       setImage(images[i], 0);
@@ -464,10 +435,7 @@ public:
            std::vector<Image> &validationImages,
            std::vector<uint8_t> &validationLabels,
            std::vector<Image> &testImages,
-           std::vector<uint8_t> &testLabels,
-           unsigned numEpochs,
-           float learningRate,
-           float lambda) {
+           std::vector<uint8_t> &testLabels) {
     // For each epoch.
     for (unsigned epoch = 0; epoch < numEpochs; ++epoch) {
       // Identically randomly shuffle the training images and labels.
@@ -481,8 +449,6 @@ public:
         //std::cout << "\rUpdate minibatch: " << i << " / " << end;
         updateMiniBatch(trainingImages.begin() + i,
                         trainingLabels.begin() + i,
-                        learningRate,
-                        lambda,
                         trainingImages.size());
       }
       //std::cout << '\n';
@@ -494,8 +460,7 @@ public:
                   << result << " / " << validationImages.size() << '\n';
       }
       if (monitorEvaluationCost) {
-        float cost = evaluateTotalCost(validationImages, validationLabels,
-                                       lambda);
+        float cost = evaluateTotalCost(validationImages, validationLabels);
         std::cout << "Cost on evaluation data: " << cost << "\n";
       }
       if (monitorTrainingAccuracy) {
@@ -504,7 +469,7 @@ public:
                   << result << " / " << testImages.size() << '\n';
       }
       if (monitorTrainingCost) {
-        float cost = evaluateTotalCost(testImages, testLabels, lambda);
+        float cost = evaluateTotalCost(testImages, testLabels);
         std::cout << "Cost on test data: " << cost << "\n";
       }
     }
@@ -538,17 +503,13 @@ int main(int argc, char **argv) {
                        trainingImages.end());
 
   std::cout << "Creating the network\n";
-  Network<mbSize, CrossEntropyCost::compute, CrossEntropyCost::delta>
-    network({28*28, 100, 10});
+  Network network({28*28, 100, 10});
   std::cout << "Running...\n";
   network.SGD(trainingImages,
               trainingLabels,
               validationImages,
               validationLabels,
               testImages,
-              testLabels,
-              numEpochs,
-              learningRate,
-              lambda);
+              testLabels);
   return 0;
 }
