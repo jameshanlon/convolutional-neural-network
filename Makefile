@@ -1,6 +1,6 @@
 CFLAGS=-Wall -Werror
 
-all: nn nndbg nn2 nn2dbg
+all: nn nndbg nn2 nndbg2 nn3 nndbg3
 
 nn: main.cpp
 	$(CXX) $(CFLAGS) -std=c++11 -O3 $< -o $@
@@ -11,8 +11,14 @@ nndbg: main.cpp
 nn2: main2.cpp
 	$(CXX) $(CFLAGS) -std=c++11 -O3 $< -o $@
 
-nn2dbg: main2.cpp
+nndbg2: main2.cpp
+	$(CXX) $(CFLAGS) -std=c++11 -g -O0 $< -o $@
+
+nn3: main3.cpp
+	$(CXX) $(CFLAGS) -std=c++11 -O3 $< -o $@
+
+nndbg3: main3.cpp
 	$(CXX) $(CFLAGS) -std=c++11 -g -O0 $< -o $@
 
 clean:
-	rm -f nn nndbg nn2 nn2dbg
+	rm -f nn nndbg nn2 nndbg2 nn3 nndbg3

@@ -115,12 +115,28 @@ struct CrossEntropyCost {
 template<
   int mbSize,
   float (*costFn)(float, float),
-  float (*costDelta)(float, float, float)
->
-class Neuron {
+  float (*costDelta)(float, float, float)>
+class Neuron;
+
+template<
+  int mbSize,
+  float (*costFn)(float, float),
+  float (*costDelta)(float, float, float)>
+class Layer {
   using NeuronT = Neuron<mbSize, costFn, costDelta>;
-  std::vector<NeuronT> *inputs;
-  std::vector<NeuronT> *outputs;
+public:
+  virtual unsigned size() = 0;
+  virtual NeuronT& getNeuron(unsigned index) = 0;
+};
+
+template<
+  int mbSize,
+  float (*costFn)(float, float),
+  float (*costDelta)(float, float, float)>
+class Neuron {
+  using LayerT = Layer<mbSize, costFn, costDelta>;
+  LayerT *inputs;
+  LayerT *outputs;
   std::vector<float> weights;
   float bias;
   unsigned index;
@@ -162,10 +178,23 @@ public:
     errors[mbIndex] = error;
   }
 
+  /// Compute the output cost (only the output neurons).
+  float computeOutputCost(uint8_t label, unsigned mbIndex) {
+    return costFn(activations[mbIndex], label);
+  }
+
+  float sumSquaredWeights() {
+    float result = 0.0f;
+    for (auto weight : weights) {
+      result += std::pow(weight, 2.0f);
+    }
+    return result;
+  }
+
   void forwardBatch(unsigned mbIndex) {
     float weightedInput = 0.0f;
     for (unsigned i = 0; i < inputs->size(); ++i) {
-      weightedInput += (*inputs)[i].getOutput(mbIndex) * weights[i];
+      weightedInput += inputs->getNeuron(i).getOutput(mbIndex) * weights[i];
     }
     weightedInput += bias;
     weightedInputs[mbIndex] = weightedInput;
@@ -174,7 +203,8 @@ public:
 
   void backwardBatch(unsigned mbIndex) {
     float error = 0.0f;
-    for (auto &neuron : *outputs) {
+    for (unsigned i = 0; i < outputs->size(); ++i) {
+      auto &neuron = outputs->getNeuron(i);
       error += neuron.getWeight(index) * neuron.getError(mbIndex);
     }
     error *= sigmoidDerivative(weightedInputs[mbIndex]);
@@ -188,7 +218,7 @@ public:
       // For each batch element, average input activation x error (rate of
       // change of cost w.r.t. weight) and multiply by learning rate.
       for (unsigned j = 0; j < mbSize; ++j) {
-        weightDelta += inputs->at(i).getOutput(j) * errors[j];
+        weightDelta += inputs->getNeuron(i).getOutput(j) * errors[j];
       }
       weightDelta *= learningRate / mbSize;
       weights[i] *= 1.0f - (learningRate * (lambda / numTrainingImages));
@@ -204,48 +234,45 @@ public:
     bias -= biasDelta;
   }
 
-  void setInputs(std::vector<NeuronT> *inputs) {
-    this->inputs = inputs;
-  }
-  void setOutputs(std::vector<NeuronT> *outputs) {
-    this->outputs = outputs;
-  }
-  void setOutput(unsigned i, float value) {
-    activations[i] = value;
-  }
+  void setInputs(LayerT *inputs) { this->inputs = inputs;  }
+  void setOutputs(LayerT *outputs) { this->outputs = outputs; }
+  void setOutput(unsigned i, float value) { activations[i] = value; }
   unsigned numWeights() { return weights.size(); }
-  /// Get output of batch element mbIndex.
   float getOutput(unsigned mbIndex) { return activations[mbIndex]; }
-  /// Get error of batch element i.
   float getError(unsigned mbIndex) { return errors[mbIndex]; }
-  /// Get weight of connection i.
   float getWeight(unsigned i) { return weights.at(i); }
 };
 
 template<
   int mbSize,
   float (*costFn)(float, float),
-  float (*costDelta)(float, float, float)
->
-class Network {
+  float (*costDelta)(float, float, float)>
+class FullyConnectedLayer : public Layer<mbSize, costFn, costDelta> {
+  using LayerT = Layer<mbSize, costFn, costDelta>;
   using NeuronT = Neuron<mbSize, costFn, costDelta>;
-  std::vector<NeuronT> inputLayer;
-  std::vector<std::vector<NeuronT>> layers;
+  std::vector<NeuronT> neurons;
 
-  /// Set the activations of the input neurons with an image.
-  void setInput(Image &image, unsigned mbIndex) {
-    assert(image.size() == layers[0].size() && "invalid input layer");
-    for (unsigned i = 0; i < layers[0].size(); ++i) {
-      layers[0][i].setOutput(mbIndex, image[i]);
+public:
+  FullyConnectedLayer(unsigned size) {
+    for (unsigned i = 0; i < size; ++i) {
+      neurons.push_back(NeuronT(i));
+    }
+  };
+
+  /// Set the input image (for the input layer only).
+  void setImage(Image &image, unsigned mbIndex) {
+    assert(image.size() == neurons.size() && "Invalid layer size for input");
+    for (unsigned i = 0; i < neurons.size(); ++i) {
+      neurons[i].setOutput(mbIndex, image[i]);
     }
   }
 
-  /// Determine the index of the highest output activation.
+  /// Determine the index of the highest output activation. Inference only.
   unsigned readOutput() {
     unsigned result = 0;
     float max = 0.0f;
-    for (unsigned i = 0; i < layers.back().size(); ++i) {
-      float output = layers.back()[i].getOutput(0);
+    for (unsigned i = 0; i < neurons.size(); ++i) {
+      float output = neurons[i].getOutput(0);
       if (output > max) {
         result = i;
         max = output;
@@ -254,30 +281,108 @@ class Network {
     return result;
   }
 
+  float sumSquaredWeights() {
+    float result = 0.0f;
+    for (auto &neuron : neurons) {
+      result += neuron.sumSquaredWeights();
+    }
+    return result;
+  }
+
+  void setInputs(LayerT *layer) {
+    for (auto &neuron : neurons) {
+      neuron.setInputs(layer);
+    }
+  }
+
+  void setOutputs(LayerT *layer) {
+    for (auto &neuron : neurons) {
+      neuron.setOutputs(layer);
+    }
+  }
+
+  void initialiseDefaultWeights() {
+    for (auto &neuron : neurons) {
+      neuron.initialiseDefaultWeights();
+    }
+  }
+
+  void computeOutputError(uint8_t label, unsigned mbIndex) {
+    for (auto &neuron : neurons) {
+      neuron.computeOutputError(label, mbIndex);
+    }
+  }
+
+  float computeOutputCost(uint8_t label, unsigned mbIndex) {
+    float outputCost = 0.0f;
+    for (auto &neuron : neurons) {
+      neuron.computeOutputCost(label, mbIndex);
+    }
+    return outputCost;
+  }
+
+  void feedForward(Image &image, unsigned mbIndex) {
+    for (auto &neuron : neurons) {
+      neuron.forwardBatch(mbIndex);
+    }
+  }
+
+  void backPropogate(unsigned mbIndex) {
+    for (auto &neuron : neurons) {
+      neuron.backwardBatch(mbIndex);
+    }
+  }
+
+  void endBatch(float learningRate, float lambda, unsigned numTrainingImages) {
+    for (auto &neuron : neurons) {
+      neuron.endBatch(learningRate, lambda, numTrainingImages);
+    }
+  }
+
+  NeuronT &getNeuron(unsigned index) override {
+    return neurons[index];
+  }
+
+  unsigned size() override { return neurons.size(); }
+};
+
+template<
+  int mbSize,
+  float (*costFn)(float, float),
+  float (*costDelta)(float, float, float)
+>
+class Network {
+  using FullyConnectedLayerT = FullyConnectedLayer<mbSize, costFn, costDelta>;
+  std::vector<FullyConnectedLayerT> layers;
+
+  /// Set the activations of the input neurons with an image.
+  void setImage(Image &image, unsigned mbIndex) {
+    layers.front().setImage(image, mbIndex);
+  }
+
+  /// Determine the index of the highest output activation.
+  unsigned readOutput() {
+    return layers.back().readOutput();
+  }
+
   /// The forward pass.
-  void feedForward(Image &image, unsigned batch) {
-    for (unsigned j = 1; j < layers.size(); ++j) {
-      for (auto &neuron : layers[j]) {
-        neuron.forwardBatch(batch);
-      }
+  void feedForward(Image &image, unsigned mbIndex) {
+    for (unsigned i = 1; i < layers.size(); ++i) {
+      layers[i].feedForward(image, mbIndex);
     }
   }
 
   /// The backward pass.
-  void backprop(Image &image, uint8_t label, unsigned mbIndex) {
+  void backPropogate(Image &image, uint8_t label, unsigned mbIndex) {
     // Set input.
-    setInput(image, mbIndex);
+    setImage(image, mbIndex);
     // Feed forward.
     feedForward(image, mbIndex);
-    // Compute output error (last layer).
-    for (auto &neuron : layers.back()) {
-      neuron.computeOutputError(label, mbIndex);
-    }
+    // Compute output error in last layer.
+    layers.back().computeOutputError(label, mbIndex);
     // Backpropagate the error.
     for (unsigned i = layers.size() - 2; i > 0; --i) {
-      for (unsigned j = 0; j < layers[i].size(); ++j) {
-        layers[i][j].backwardBatch(mbIndex);
-      }
+      layers[i].backPropogate(mbIndex);
     }
   }
 
@@ -286,47 +391,32 @@ class Network {
                        float learningRate,
                        float lambda,
                        unsigned numTrainingImages) {
-    // For each training image and label, backpropogate.
+    // For each training image and label, backPropogateogate.
     for (unsigned i = 0; i < mbSize; ++i) {
-      backprop(*(trainingImagesIt + i), *(trainingLabelsIt + i), i);
+      backPropogate(*(trainingImagesIt + i), *(trainingLabelsIt + i), i);
     }
     // Gradient descent: for every neuron, compute the new weights and biases.
     for (unsigned i = layers.size() - 1; i > 0; --i) {
-      for (auto &neuron : layers[i]) {
-        neuron.endBatch(learningRate, lambda, numTrainingImages);
-      }
+      layers[i].endBatch(learningRate, lambda, numTrainingImages);
     }
   }
 
 public:
   Network(const std::vector<unsigned> sizes) {
     // Create the input layer.
-    auto layer = std::vector<NeuronT>();
-    for (unsigned i = 0; i < sizes[0]; ++i) {
-      layer.push_back(NeuronT(i));
-    }
-    layers.push_back(layer);
+    layers.push_back(FullyConnectedLayerT(sizes[0]));
     // For each remaining layer.
     for (unsigned i = 1; i < sizes.size(); ++i) {
-      auto layer = std::vector<NeuronT>();
-      // For each neuron.
-      for (unsigned j = 0; j < sizes[i]; ++j) {
-        layer.push_back(NeuronT(j));
-      }
-      layers.push_back(layer);
+      layers.push_back(FullyConnectedLayerT(sizes[i]));
     }
     // Set neuron inputs.
     for (unsigned i = 1; i < layers.size(); ++i) {
-      for (unsigned j = 0; j < layers[i].size(); ++j) {
-        layers[i][j].setInputs(&layers[i-1]);
-        layers[i][j].initialiseDefaultWeights();
-      }
+      layers[i].setInputs(&layers[i - 1]);
+      layers[i].initialiseDefaultWeights();
     }
     // Set neuron outputs.
     for (unsigned i = 0; i < layers.size() - 1; ++i) {
-      for (unsigned j = 0; j < layers[i].size(); ++j) {
-        layers[i][j].setOutputs(&layers[i+1]);
-      }
+      layers[i].setOutputs(&layers[i + 1]);
     }
   }
 
@@ -336,7 +426,7 @@ public:
     unsigned result = 0;
     for (unsigned i = 0; i < testImages.size(); ++i) {
       //std::cout << "\rTest image " << i;
-      setInput(testImages[i], 0);
+      setImage(testImages[i], 0);
       feedForward(testImages[i], 0);
       if (readOutput() == testLabels[i]) {
         ++result;
@@ -349,11 +439,7 @@ public:
   float sumSquareWeights() {
     float result = 0.0f;
     for (unsigned i = 1; i < layers.size(); ++i) {
-      for (auto &neuron : layers[i]) {
-        for (unsigned j = 0; j < neuron.numWeights(); ++j) {
-          result += std::pow(neuron.getWeight(j), 2.0f);
-        }
-      }
+      result += layers[i].sumSquaredWeights();
     }
     return result;
   }
@@ -364,14 +450,9 @@ public:
                           float lambda) {
     float cost = 0.0f;
     for (unsigned i = 0; i < images.size(); ++i) {
-      setInput(images[i], 0);
+      setImage(images[i], 0);
       feedForward(images[i], 0);
-      // For each output activation.
-      // FIXME: this should sum the cost of the whole layer and then divide.
-      for (unsigned j = 0; j < layers.back().size(); ++j) {
-        float output = layers.back()[j].getOutput(0);
-        cost += costFn(output, labels[i]) / images.size();
-      }
+      cost += layers.back().computeOutputCost(labels[i], 0) / images.size();
       // Add the regularisation term.
       cost += 0.5f * (lambda / images.size()) * sumSquareWeights();
     }
