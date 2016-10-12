@@ -118,9 +118,23 @@ static void readImages(const char *filename,
 class Neuron;
 
 class Layer {
+protected:
+  std::vector<Neuron> neurons;
 public:
-  virtual unsigned size() = 0;
-  virtual Neuron &getNeuron(unsigned index) = 0;
+  virtual void initialiseDefaultWeights() {}
+  virtual void feedForward(Image &image, unsigned mbIndex) {}
+  virtual void backPropogate(unsigned mbIndex) {}
+  virtual void endBatch(unsigned numTrainingImages) {}
+  virtual void computeOutputError(uint8_t label, unsigned mbIndex) {}
+  virtual float computeOutputCost(uint8_t label, unsigned mbIndex) {
+    return 0.0f;
+  }
+  virtual float sumSquaredWeights() { return 0.0f; }
+  virtual void setInputs(Layer *layer) {}
+  virtual void setOutputs(Layer *layer) {}
+  virtual unsigned readOutput() { return 0; }
+  Neuron &getNeuron(unsigned index) { return neurons.at(index); }
+  unsigned size() { return neurons.size(); }
 };
 
 class Neuron {
@@ -146,16 +160,6 @@ public:
     for (unsigned i = 0; i < inputs->size(); ++i) {
       float weight = distribution(generator) / std::sqrt(inputs->size());
       weights.push_back(weight);
-    }
-    bias = distribution(generator);
-  }
-
-  void initialiseLargeWeights() {
-    // Just using random numbers as above.
-    static std::default_random_engine generator(std::time(nullptr));
-    std::normal_distribution<float> distribution(0, 1.0f);
-    for (unsigned i = 0; i < inputs->size(); ++i) {
-      weights.push_back(distribution(generator));
     }
     bias = distribution(generator);
   }
@@ -232,25 +236,31 @@ public:
   float getWeight(unsigned i) { return weights.at(i); }
 };
 
-class FullyConnectedLayer : public Layer {
-  std::vector<Neuron> neurons;
-
+class InputLayer : public Layer {
 public:
-  FullyConnectedLayer(unsigned size) {
+  InputLayer(unsigned size) {
     for (unsigned i = 0; i < size; ++i) {
       neurons.push_back(Neuron(i));
     }
-  };
-
-  /// Set the input image (for the input layer only).
+  }
   void setImage(Image &image, unsigned mbIndex) {
     assert(image.size() == neurons.size() && "Invalid layer size for input");
     for (unsigned i = 0; i < neurons.size(); ++i) {
       neurons[i].setOutput(mbIndex, image[i]);
     }
   }
+};
 
-  /// Determine the index of the highest output activation. Inference only.
+class FullyConnectedLayer : public Layer {
+
+public:
+  FullyConnectedLayer(unsigned size) {
+    for (unsigned i = 0; i < size; ++i) {
+      neurons.push_back(Neuron(i));
+    }
+  }
+
+  /// Determine the index of the highest output activation.
   unsigned readOutput() {
     unsigned result = 0;
     float max = 0.0f;
@@ -321,28 +331,75 @@ public:
       neuron.endBatch(numTrainingImages);
     }
   }
+};
 
-  Neuron &getNeuron(unsigned index) override { return neurons[index]; }
-  unsigned size() override { return neurons.size(); }
+template<int kernelWidth, int kernelHeight>
+class ConvLayer : public Layer {
+  float weights[kernelWidth][kernelHeight];
+  Layer *inputs;
+  Layer *outputs;
+
+public:
+  ConvLayer(unsigned size) {}
+
+  float sumSquaredWeights() {
+    float result = 0.0f;
+    for (unsigned i = 0; i < kernelWidth; ++i) {
+      for (unsigned j = 0; j < kernelHeight; ++j) {
+        result += std::pow(weights[i][j]);
+      }
+    }
+    return result;
+  }
+
+  void setInputs(Layer *layer) {
+    inputs = layer;
+  }
+
+  void setOutputs(Layer *layer) {
+    outputs = layer;
+  }
+
+  void initialiseDefaultWeights() {
+    static std::default_random_engine generator(std::time(nullptr));
+    std::normal_distribution<float> distribution(0, 1.0);
+    for (unsigned i = 0; i < kernelWidth; ++i) {
+      for (unsigned j = 0; j < kernelHeight; ++j) {
+        weights[i][j] = distribution(generator) / std::sqrt(inputs->size());
+      }
+    }
+  }
+
+  void feedForward(Image &image, unsigned mbIndex) {
+  }
+
+  void backPropogate(unsigned mbIndex) {
+  }
+
+  void endBatch(unsigned numTrainingImages) {
+  }
+
+  void computeOutputError(uint8_t label, unsigned mbIndex) {
+  }
+
+  float computeOutputCost(uint8_t label, unsigned mbIndex) {
+    return 0.0f;
+  }
+};
+
+class MaxPoolLayer : public Layer {
+public:
+  MaxPoolLayer() {}
 };
 
 class Network {
-  std::vector<FullyConnectedLayer> layers;
-
-  /// Set the activations of the input neurons with an image.
-  void setImage(Image &image, unsigned mbIndex) {
-    layers.front().setImage(image, mbIndex);
-  }
-
-  /// Determine the index of the highest output activation.
-  unsigned readOutput() {
-    return layers.back().readOutput();
-  }
+  InputLayer inputLayer;
+  std::vector<Layer> layers;
 
   /// The forward pass.
   void feedForward(Image &image, unsigned mbIndex) {
-    for (unsigned i = 1; i < layers.size(); ++i) {
-      layers[i].feedForward(image, mbIndex);
+    for (auto &layer : layers) {
+      layer.feedForward(image, mbIndex);
     }
   }
 
@@ -363,7 +420,7 @@ class Network {
   void updateMiniBatch(std::vector<Image>::iterator trainingImagesIt,
                        std::vector<uint8_t>::iterator trainingLabelsIt,
                        unsigned numTrainingImages) {
-    // For each training image and label, backPropogateogate.
+    // For each training image and label, back propogate.
     for (unsigned i = 0; i < mbSize; ++i) {
       backPropogate(*(trainingImagesIt + i), *(trainingLabelsIt + i), i);
     }
@@ -373,15 +430,40 @@ class Network {
     }
   }
 
-public:
-  Network(const std::vector<unsigned> sizes) {
-    // Create the input layer.
-    layers.push_back(FullyConnectedLayer(sizes[0]));
-    // For each remaining layer.
-    for (unsigned i = 1; i < sizes.size(); ++i) {
-      layers.push_back(FullyConnectedLayer(sizes[i]));
+  float sumSquareWeights() {
+    float result = 0.0f;
+    for (auto &layer : layers) {
+      result += layer.sumSquaredWeights();
     }
+    return result;
+  }
+
+  /// Calculate the total cost for a dataset.
+  float evaluateTotalCost(std::vector<Image> &images,
+                          std::vector<uint8_t> &labels) {
+    float cost = 0.0f;
+    for (unsigned i = 0; i < images.size(); ++i) {
+      setImage(images[i], 0);
+      feedForward(images[i], 0);
+      cost += layers.back().computeOutputCost(labels[i], 0) / images.size();
+      // Add the regularisation term.
+      cost += 0.5f * (lambda / images.size()) * sumSquareWeights();
+    }
+    return cost;
+  }
+
+  /// Set the activations of the input neurons with an image.
+  void setImage(Image &image, unsigned mbIndex) {
+    inputLayer.setImage(image, mbIndex);
+  }
+
+public:
+  Network(unsigned inputSize, std::vector<Layer> &layers) :
+      inputLayer(inputSize),
+      layers(layers) {
     // Set neuron inputs.
+    layers.front().setInputs(&inputLayer);
+    layers.front().initialiseDefaultWeights();
     for (unsigned i = 1; i < layers.size(); ++i) {
       layers[i].setInputs(&layers[i - 1]);
       layers[i].initialiseDefaultWeights();
@@ -400,34 +482,12 @@ public:
       //std::cout << "\rTest image " << i;
       setImage(testImages[i], 0);
       feedForward(testImages[i], 0);
-      if (readOutput() == testLabels[i]) {
+      if (layers.back().readOutput() == testLabels[i]) {
         ++result;
       }
     }
     //std::cout << '\n';
     return result;
-  }
-
-  float sumSquareWeights() {
-    float result = 0.0f;
-    for (unsigned i = 1; i < layers.size(); ++i) {
-      result += layers[i].sumSquaredWeights();
-    }
-    return result;
-  }
-
-  /// Calculate the total cost for a dataset.
-  float evaluateTotalCost(std::vector<Image> &images,
-                          std::vector<uint8_t> &labels) {
-    float cost = 0.0f;
-    for (unsigned i = 0; i < images.size(); ++i) {
-      setImage(images[i], 0);
-      feedForward(images[i], 0);
-      cost += layers.back().computeOutputCost(labels[i], 0) / images.size();
-      // Add the regularisation term.
-      cost += 0.5f * (lambda / images.size()) * sumSquareWeights();
-    }
-    return cost;
   }
 
   void SGD(std::vector<Image> &trainingImages,
@@ -503,7 +563,16 @@ int main(int argc, char **argv) {
                        trainingImages.end());
 
   std::cout << "Creating the network\n";
-  Network network({28*28, 100, 10});
+  Network network(28 * 28, {
+      FullyConnectedLayer(100),
+      FullyConnectedLayer(10),
+    });
+  //Network network({
+  //    InputLayer(28 * 28),
+  //    ConvLayer<5, 5>(),
+  //    MaxPoolLayer<2, 2>(),
+  //    FullyConnectedLayer(10),
+  //  });
   std::cout << "Running...\n";
   network.SGD(trainingImages,
               trainingLabels,
