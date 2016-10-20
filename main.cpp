@@ -25,7 +25,7 @@ static void readLabels(const char *filename,
     std::cout << "Error opening file " << filename << '\n';
     std::exit(1);
   }
-  int32_t magicNumber, numItems;
+  uint32_t magicNumber, numItems;
   file.read(reinterpret_cast<char*>(&magicNumber), 4);
   file.read(reinterpret_cast<char*>(&numItems), 4);
   magicNumber = __builtin_bswap32(magicNumber);
