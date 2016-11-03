@@ -42,7 +42,7 @@ struct CrossEntropyCost {
   }
 };
 
-// Globals and constants.
+/// Globals and constants.
 const unsigned numEpochs = 100;
 const unsigned mbSize = 10;
 const float learningRate = 1.0f;
@@ -117,6 +117,7 @@ static void readImages(const char *filename,
 }
 
 class Neuron {
+  /// Each neuron in the network stores an activation and an error.
 protected:
   unsigned index;
   float activations[mbSize];
@@ -126,13 +127,13 @@ public:
   float getOutput(unsigned mbIndex) { return activations[mbIndex]; }
   void setOutput(unsigned i, float value) { activations[i] = value; }
   float getError(unsigned mbIndex) { return errors[mbIndex]; }
-  virtual float getWeight(unsigned index) { assert(0 && "invalid call"); return 0.0f; }
 };
 
 class Layer {
 public:
   virtual void initialiseDefaultWeights() = 0;
   virtual void feedForward(unsigned mbIndex) = 0;
+  virtual void calcBwdError(unsigned mbIndex) = 0;
   virtual void backPropogate(unsigned mbIndex) = 0;
   virtual void endBatch(unsigned numTrainingImages) = 0;
   virtual void computeOutputError(uint8_t label, unsigned mbIndex) = 0;
@@ -141,6 +142,7 @@ public:
   virtual void setInputs(Layer *layer) = 0;
   virtual void setOutputs(Layer *layer) = 0;
   virtual unsigned readOutput() = 0;
+  virtual float getBwdError(unsigned index, unsigned mbIndex) = 0;
   virtual Neuron &getNeuron(unsigned index) = 0;
   virtual unsigned size() = 0;
 };
@@ -159,41 +161,48 @@ public:
       neurons[i].setOutput(mbIndex, image[i]);
     }
   }
-  void initialiseDefaultWeights() {
+  void initialiseDefaultWeights() override {
     assert(0 && "invalid call");
   }
-  void feedForward(unsigned mbIndex) {
+  virtual void calcBwdError(unsigned mbIndex) override {
     assert(0 && "invalid call");
   }
-  void backPropogate(unsigned mbIndex) {
+  void feedForward(unsigned mbIndex) override {
     assert(0 && "invalid call");
   }
-  void endBatch(unsigned numTrainingImages) {
+  void backPropogate(unsigned mbIndex) override {
     assert(0 && "invalid call");
   }
-  void computeOutputError(uint8_t label, unsigned mbIndex) {
+  void endBatch(unsigned numTrainingImages) override {
     assert(0 && "invalid call");
   }
-  float computeOutputCost(uint8_t label, unsigned mbIndex) {
+  void computeOutputError(uint8_t label, unsigned mbIndex) override {
+    assert(0 && "invalid call");
+  }
+  float computeOutputCost(uint8_t label, unsigned mbIndex) override {
     assert(0 && "invalid call");
     return 0.0f;
   }
-  float sumSquaredWeights() {
+  float sumSquaredWeights() override {
     assert(0 && "invalid call");
     return 0.0f;
   }
-  void setInputs(Layer *layer) {
+  void setInputs(Layer *layer) override {
     assert(0 && "invalid call");
   }
-  void setOutputs(Layer *layer) {
+  void setOutputs(Layer *layer) override {
     assert(0 && "invalid call");
   }
-  unsigned readOutput() {
+  unsigned readOutput() override {
     assert(0 && "invalid call");
     return 0;
   }
-  Neuron &getNeuron(unsigned index) { return neurons.at(index); }
-  unsigned size() { return neurons.size(); }
+  float getBwdError(unsigned index, unsigned mbIndex) override {
+    assert(0 && "invalid call");
+    return 0.0f;
+  }
+  Neuron &getNeuron(unsigned index) override { return neurons.at(index); }
+  unsigned size() override { return neurons.size(); }
 };
 
 class FullyConnectedNeuron : public Neuron {
@@ -201,7 +210,6 @@ class FullyConnectedNeuron : public Neuron {
   Layer *outputs;
   std::vector<float> weights;
   float bias;
-  // Per batch.
   float weightedInputs[mbSize];
 
 public:
@@ -252,11 +260,9 @@ public:
   }
 
   void backwardBatch(unsigned mbIndex) {
-    float error = 0.0f;
-    for (unsigned i = 0; i < outputs->size(); ++i) {
-      auto &neuron = outputs->getNeuron(i);
-      error += neuron.getWeight(index) * neuron.getError(mbIndex);
-    }
+    // Get the weight-error sum component from the next layer, then multiply by
+    // the sigmoid derivative to get the error for this neuron.
+    float error = outputs->getBwdError(index, mbIndex);
     error *= sigmoidDerivative(weightedInputs[mbIndex]);
     errors[mbIndex] = error;
   }
@@ -287,13 +293,18 @@ public:
   void setInputs(Layer *inputs) { this->inputs = inputs; }
   void setOutputs(Layer *outputs) { this->outputs = outputs; }
   unsigned numWeights() { return weights.size(); }
-  float getWeight(unsigned i) override { return weights.at(i); }
+  float getWeight(unsigned i) { return weights.at(i); }
 };
 
 class FullyConnectedLayer : public Layer {
+  Layer *inputs;
+  Layer *outputs;
   std::vector<FullyConnectedNeuron> neurons;
+  boost::multi_array<float, 2> bwdErrors;
+
 public:
-  FullyConnectedLayer(unsigned size) {
+  FullyConnectedLayer(unsigned size, unsigned prevSize) :
+      bwdErrors(boost::extents[prevSize][mbSize]) {
     for (unsigned i = 0; i < size; ++i) {
       neurons.push_back(FullyConnectedNeuron(i));
     }
@@ -322,12 +333,14 @@ public:
   }
 
   void setInputs(Layer *layer) override {
+    inputs = layer;
     for (auto &neuron : neurons) {
       neuron.setInputs(layer);
     }
   }
 
   void setOutputs(Layer *layer) override {
+    outputs = layer;
     for (auto &neuron : neurons) {
       neuron.setOutputs(layer);
     }
@@ -345,7 +358,19 @@ public:
     }
   }
 
+  void calcBwdError(unsigned mbIndex) override {
+    // Calculate errors for each neuron in previous layer.
+    for (unsigned i = 0; i < inputs->size(); ++i) {
+      float error = 0.0f;
+      for (auto &neuron : neurons) {
+        error += neuron.getWeight(i) * neuron.getError(mbIndex);
+      }
+      bwdErrors[i][mbIndex] = error;
+    }
+  }
+
   void backPropogate(unsigned mbIndex) override {
+    // Update errors from next layer.
     for (auto &neuron : neurons) {
       neuron.backwardBatch(mbIndex);
     }
@@ -370,16 +395,20 @@ public:
     }
     return outputCost;
   }
+
+  float getBwdError(unsigned index, unsigned mbIndex) override {
+    return bwdErrors[index][mbIndex];
+  }
+
   Neuron &getNeuron(unsigned index) override { return neurons.at(index); }
   unsigned size() override { return neurons.size(); }
 };
 
-//class ConvNeuron : public Neuron {
-//public:
-//  ConvNeuron(unsigned index) : Neuron(index) {}
-//  float getWeight(unsigned index) override { /* what to do here? */ return 0.0f; }
-//};
-//
+class ConvNeuron : public Neuron {
+public:
+  ConvNeuron(unsigned index) : Neuron(index) {}
+};
+
 //class ConvLayer : public Layer {
 //  Layer *inputs;
 //  Layer *outputs;
@@ -388,6 +417,7 @@ public:
 //  unsigned kernelY;
 //  unsigned inputX;
 //  unsigned inputY;
+//  boost::multi_array<ConvNeuron, 2> neurons;
 //  boost::multi_array<float, 2> weights;
 //
 //public:
@@ -406,6 +436,7 @@ public:
 //  }
 //
 //  void initialiseDefaultWeights() override {
+//    // Initialise the weights in the kernel.
 //    static std::default_random_engine generator(std::time(nullptr));
 //    std::normal_distribution<float> distribution(0, 1.0f);
 //    for (unsigned i = 0; i < kernelX; ++i) {
@@ -416,6 +447,7 @@ public:
 //  }
 //
 //  void feedForward(unsigned mbIndex) override {
+//
 //  }
 //
 //  void backPropogate(unsigned mbIndex) override {
@@ -448,7 +480,7 @@ public:
 //    return 0;
 //  }
 //};
-//
+
 //class MaxPoolLayer : public Layer {
 //  Layer *inputs;
 //  Layer *outputs;
@@ -523,7 +555,9 @@ class Network {
     // Compute output error in last layer.
     layers.back()->computeOutputError(label, mbIndex);
     // Backpropagate the error.
+    layers[layers.size() - 1]->calcBwdError(mbIndex);
     for (int i = layers.size() - 2; i >= 0; --i) {
+      layers[i]->calcBwdError(mbIndex);
       layers[i]->backPropogate(mbIndex);
     }
   }
@@ -668,8 +702,8 @@ int main(int argc, char **argv) {
 
   std::cout << "Creating the network\n";
   Network network(28 * 28, {
-      new FullyConnectedLayer(100),
-      new FullyConnectedLayer(10),
+      new FullyConnectedLayer(100, 28 * 28),
+      new FullyConnectedLayer(10, 100),
     });
 //  Network network(28 * 28, {
 //      new ConvLayer(1, 5, 5, 28, 28),
