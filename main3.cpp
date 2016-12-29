@@ -121,7 +121,6 @@ static void readImages(const char *filename,
 struct Neuron {
   /// Each neuron in the network stores an activation and an error.
   unsigned index, x, y;
-  float bias;
   float weightedInputs[mbSize];
   float activations[mbSize];
   float errors[mbSize];
@@ -218,6 +217,7 @@ class FullyConnectedNeuron : public Neuron {
   Layer *inputs;
   Layer *outputs;
   std::vector<float> weights;
+  float bias;
 
 public:
   FullyConnectedNeuron(unsigned index) :
@@ -422,13 +422,15 @@ public:
 class ConvLayer : public Layer {
   Layer *inputs;
   Layer *outputs;
-  unsigned numFeatureMaps;
   unsigned kernelX;
   unsigned kernelY;
   unsigned inputX;
   unsigned inputY;
-  boost::multi_array<float, 2> weights;
+  // TODO: weights, neurons and biases per feature map.
+  unsigned numFeatureMaps;
   boost::multi_array<Neuron*, 2> neurons;
+  boost::multi_array<float, 2> weights;
+  float bias;
 
 public:
   ConvLayer(unsigned numFeatureMaps,
@@ -470,7 +472,7 @@ public:
             weightedInput += input * weights[a][b];
           }
         }
-        weightedInput += neurons[x][y]->bias;
+        weightedInput += bias;
         neurons[x][y]->weightedInputs[mbIndex] = weightedInput;
         neurons[x][y]->activations[mbIndex] = sigmoid(weightedInput);
       }
@@ -616,6 +618,22 @@ class Network {
   InputLayer inputLayer;
   std::vector<Layer*> layers;
 
+public:
+  Network(unsigned inputX, unsigned inputY, std::vector<Layer*> layers) :
+      inputLayer(inputX, inputY), layers(layers) {
+    // Set neuron inputs.
+    layers[0]->setInputs(&inputLayer);
+    layers[0]->initialiseDefaultWeights();
+    for (unsigned i = 1; i < layers.size(); ++i) {
+      layers[i]->setInputs(layers[i - 1]);
+      layers[i]->initialiseDefaultWeights();
+    }
+    // Set neuron outputs.
+    for (unsigned i = 0; i < layers.size() - 1; ++i) {
+      layers[i]->setOutputs(layers[i + 1]);
+    }
+  }
+
   /// The forward pass.
   void feedForward(unsigned mbIndex) {
     for (auto layer : layers) {
@@ -672,22 +690,6 @@ class Network {
       cost += 0.5f * (lambda / images.size()) * sumSquareWeights();
     }
     return cost;
-  }
-
-public:
-  Network(unsigned inputX, unsigned inputY, std::vector<Layer*> layers) :
-      inputLayer(inputX, inputY), layers(layers) {
-    // Set neuron inputs.
-    layers[0]->setInputs(&inputLayer);
-    layers[0]->initialiseDefaultWeights();
-    for (unsigned i = 1; i < layers.size(); ++i) {
-      layers[i]->setInputs(layers[i - 1]);
-      layers[i]->initialiseDefaultWeights();
-    }
-    // Set neuron outputs.
-    for (unsigned i = 0; i < layers.size() - 1; ++i) {
-      layers[i]->setOutputs(layers[i + 1]);
-    }
   }
 
   /// Evaluate the test set and return the number of correct classifications.
@@ -748,6 +750,9 @@ public:
       }
     }
   }
+
+  void setInput(Image &image, unsigned mbIndex) { inputLayer.setImage(image, mbIndex); }
+  unsigned readOutput(unsigned mbIndex) { return layers.back()->readOutput(); }
 };
 
 int main(int argc, char **argv) {
@@ -774,22 +779,25 @@ int main(int argc, char **argv) {
   trainingImages.erase(trainingImages.end() - validationSize,
                        trainingImages.end());
   // Create the network.
-  std::cout << "Creating the network\n";
-  auto FC1 = new FullyConnectedLayer(100, 28 * 28);
-  auto FC2 = new FullyConnectedLayer(10, FC1->size());
-  Network network(28, 28, { FC1, FC2 });
-//  auto Conv1 = new ConvLayer(1, 5, 5, 28, 28);
-//  auto MaxPool1 = new MaxPoolLayer(1, 2, 2, 24, 24);
-//  auto FC1 = new FullyConnectedLayer(30, MaxPool1->size());
+//  std::cout << "Creating the network\n";
+//  auto FC1 = new FullyConnectedLayer(100, 28 * 28);
 //  auto FC2 = new FullyConnectedLayer(10, FC1->size());
-//  Network network(28, 28, { Conv1, MaxPool1, FC1, FC2 });
+//  Network network(28, 28, { FC1, FC2 });
+  auto Conv1 = new ConvLayer(1, 5, 5, 28, 28);
+  auto MaxPool1 = new MaxPoolLayer(1, 2, 2, 24, 24);
+  auto FC1 = new FullyConnectedLayer(30, MaxPool1->size());
+  auto FC2 = new FullyConnectedLayer(10, FC1->size());
+  Network network(28, 28, { Conv1, MaxPool1, FC1, FC2 });
   // Run it.
   std::cout << "Running...\n";
-  network.SGD(trainingImages,
-              trainingLabels,
-              validationImages,
-              validationLabels,
-              testImages,
-              testLabels);
+//  network.SGD(trainingImages,
+//              trainingLabels,
+//              validationImages,
+//              validationLabels,
+//              testImages,
+//              testLabels);
+  network.setInput(testImages[0], 0);
+  network.feedForward(0);
+  std::cout << network.readOutput(0) << "\n";
   return 0;
 }
