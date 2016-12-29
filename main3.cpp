@@ -12,6 +12,8 @@
 #include <random>
 #include <vector>
 
+#define DO_NOT_USE assert(0 && "invalid call");
+
 using Image = std::vector<float>;
 
 static float sigmoid(float z) {
@@ -165,43 +167,43 @@ public:
     }
   }
   void initialiseDefaultWeights() override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   virtual void calcBwdError(unsigned mbIndex) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   void feedForward(unsigned mbIndex) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   void backPropogate(unsigned mbIndex) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   void endBatch(unsigned numTrainingImages) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   void computeOutputError(uint8_t label, unsigned mbIndex) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   float computeOutputCost(uint8_t label, unsigned mbIndex) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
     return 0.0f;
   }
   float sumSquaredWeights() override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
     return 0.0f;
   }
   void setInputs(Layer *layer) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   void setOutputs(Layer *layer) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
   }
   unsigned readOutput() override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
     return 0;
   }
   float getBwdError(unsigned index, unsigned mbIndex) override {
-    assert(0 && "invalid call");
+    DO_NOT_USE;
     return 0.0f;
   }
   Neuron &getNeuron(unsigned i) override {
@@ -364,7 +366,7 @@ public:
   }
 
   void calcBwdError(unsigned mbIndex) override {
-    // Calculate errors for each neuron in previous layer.
+    // Calculate the l+1 component of the error for each neuron in previous layer.
     for (unsigned i = 0; i < inputs->size(); ++i) {
       float error = 0.0f;
       for (auto &neuron : neurons) {
@@ -478,6 +480,9 @@ public:
   void backPropogate(unsigned mbIndex) override {
   }
 
+  void calcBwdError(unsigned mbIndex) override {
+  }
+
   void endBatch(unsigned numTrainingImages) override {
   }
 
@@ -485,6 +490,10 @@ public:
   }
 
   float computeOutputCost(uint8_t label, unsigned mbIndex) override {
+    return 0.0f;
+  }
+
+  float getBwdError(unsigned index, unsigned mbIndex) override {
     return 0.0f;
   }
 
@@ -502,13 +511,17 @@ public:
     assert(layer->size() == inputX * inputY && "Invalid input layer size");
     inputs = layer;
   }
-
   void setOutputs(Layer *layer) override { outputs = layer; }
-
   unsigned readOutput() override {
-    assert(0 && "not output layer");
+    DO_NOT_USE;
     return 0;
   }
+  Neuron &getNeuron(unsigned i) override {
+    unsigned imageX = neurons.shape()[0];
+    return *neurons[i / imageX][i % imageX];
+  }
+  Neuron &getNeuron(unsigned x, unsigned y) override { return *neurons[x][y]; }
+  unsigned size() override { return neurons.num_elements(); }
 };
 
 class MaxPoolLayer : public Layer {
@@ -560,6 +573,9 @@ public:
   void backPropogate(unsigned mbIndex) override {
   }
 
+  void calcBwdError(unsigned mbIndex) override {
+  }
+
   void endBatch(unsigned numTrainingImages) override {
   }
 
@@ -570,16 +586,30 @@ public:
     return 0.0f;
   }
 
+  float getBwdError(unsigned index, unsigned mbIndex) override {
+    return 0.0f;
+  }
+
   float sumSquaredWeights() override {
     return 0.0f;
   }
 
-  void setInputs(Layer *layer) override { inputs = layer; }
+  void setInputs(Layer *layer) override {
+    unsigned inputSize = (poolX * neurons.shape()[0]) + (poolY * neurons.shape()[1]);
+    assert(layer->size() == inputSize && "invalid input layer size");
+    inputs = layer;
+  }
   void setOutputs(Layer *layer) override { outputs = layer; }
   unsigned readOutput() override {
-    assert(0 && "not an output layer");
+    DO_NOT_USE;
     return 0;
   }
+  Neuron &getNeuron(unsigned i) override {
+    unsigned imageX = neurons.shape()[0];
+    return *neurons[i / imageX][i % imageX];
+  }
+  Neuron &getNeuron(unsigned x, unsigned y) override { return *neurons[x][y]; }
+  unsigned size() override { return neurons.num_elements(); }
 };
 
 class Network {
@@ -745,16 +775,14 @@ int main(int argc, char **argv) {
                        trainingImages.end());
   // Create the network.
   std::cout << "Creating the network\n";
-  Network network(28, 28, {
-      new FullyConnectedLayer(100, 28 * 28),
-      new FullyConnectedLayer(10, 100),
-    });
-//  Network network(28 * 28, {
-//      new ConvLayer(1, 5, 5, 28, 28),
-//      new MaxPoolLayer(1, 2, 2, 24, 24),
-//      new FullyConnectedLayer(30),
-//      new FullyConnectedLayer(10),
-//    });
+  auto FC1 = new FullyConnectedLayer(100, 28 * 28);
+  auto FC2 = new FullyConnectedLayer(10, FC1->size());
+  Network network(28, 28, { FC1, FC2 });
+//  auto Conv1 = new ConvLayer(1, 5, 5, 28, 28);
+//  auto MaxPool1 = new MaxPoolLayer(1, 2, 2, 24, 24);
+//  auto FC1 = new FullyConnectedLayer(30, MaxPool1->size());
+//  auto FC2 = new FullyConnectedLayer(10, FC1->size());
+//  Network network(28, 28, { Conv1, MaxPool1, FC1, FC2 });
   // Run it.
   std::cout << "Running...\n";
   network.SGD(trainingImages,
