@@ -147,6 +147,9 @@ public:
   virtual unsigned size() = 0;
 };
 
+///===--------------------------------------------------------------------===///
+/// Input layer.
+///===--------------------------------------------------------------------===///
 class InputLayer : public Layer {
   boost::multi_array<Neuron*, 2> neurons;
 public:
@@ -213,6 +216,9 @@ public:
   unsigned size() override { return neurons.num_elements(); }
 };
 
+///===--------------------------------------------------------------------===///
+/// Fully-connected neuron.
+///===--------------------------------------------------------------------===///
 class FullyConnectedNeuron : public Neuron {
   Layer *inputs;
   Layer *outputs;
@@ -303,6 +309,9 @@ public:
   float getWeight(unsigned i) { return weights.at(i); }
 };
 
+///===--------------------------------------------------------------------===///
+/// Fully-connected layer.
+///===--------------------------------------------------------------------===///
 class FullyConnectedLayer : public Layer {
   Layer *inputs;
   Layer *outputs;
@@ -365,8 +374,8 @@ public:
     }
   }
 
+  /// Calculate the l+1 component of the error for each neuron in prev layer.
   void calcBwdError(unsigned mbIndex) override {
-    // Calculate the l+1 component of the error for each neuron in previous layer.
     for (unsigned i = 0; i < inputs->size(); ++i) {
       float error = 0.0f;
       for (auto &neuron : neurons) {
@@ -415,10 +424,15 @@ public:
   unsigned size() override { return neurons.size(); }
 };
 
+///===--------------------------------------------------------------------===///
+/// Conv layer
+///
 /// kernelX is num cols
 /// kernelY is num rows
 /// neuron(x, y) is row y, col x
 /// weights(a, b) is row b, col a
+/// TODO: weights, neurons and biases per feature map.
+///===--------------------------------------------------------------------===///
 class ConvLayer : public Layer {
   Layer *inputs;
   Layer *outputs;
@@ -426,7 +440,6 @@ class ConvLayer : public Layer {
   unsigned kernelY;
   unsigned inputX;
   unsigned inputY;
-  // TODO: weights, neurons and biases per feature map.
   unsigned numFeatureMaps;
   boost::multi_array<Neuron*, 2> neurons;
   boost::multi_array<float, 2> weights;
@@ -437,11 +450,11 @@ public:
             unsigned kernelX, unsigned kernelY,
             unsigned inputX, unsigned inputY) :
       inputs(nullptr), outputs(nullptr),
-      numFeatureMaps(numFeatureMaps),
       kernelX(kernelX), kernelY(kernelY),
       inputX(inputX), inputY(inputY),
-      weights(boost::extents[kernelX][kernelY]),
-      neurons(boost::extents[inputX - kernelX - 1][inputY - kernelY - 1]) {
+      numFeatureMaps(numFeatureMaps),
+      neurons(boost::extents[inputX - kernelX - 1][inputY - kernelY - 1]),
+      weights(boost::extents[kernelX][kernelY]) {
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
         neurons[x][y] = new Neuron(x, y);
@@ -526,6 +539,9 @@ public:
   unsigned size() override { return neurons.num_elements(); }
 };
 
+///===--------------------------------------------------------------------===///
+/// Max pool layer
+///===--------------------------------------------------------------------===///
 class MaxPoolLayer : public Layer {
   Layer *inputs;
   Layer *outputs;
@@ -597,7 +613,8 @@ public:
   }
 
   void setInputs(Layer *layer) override {
-    unsigned inputSize = (poolX * neurons.shape()[0]) + (poolY * neurons.shape()[1]);
+    unsigned inputSize = (poolX * neurons.shape()[0])
+                           + (poolY * neurons.shape()[1]);
     assert(layer->size() == inputSize && "invalid input layer size");
     inputs = layer;
   }
@@ -614,6 +631,9 @@ public:
   unsigned size() override { return neurons.num_elements(); }
 };
 
+///===--------------------------------------------------------------------===///
+/// The network.
+///===--------------------------------------------------------------------===///
 class Network {
   InputLayer inputLayer;
   std::vector<Layer*> layers;
@@ -751,8 +771,12 @@ public:
     }
   }
 
-  void setInput(Image &image, unsigned mbIndex) { inputLayer.setImage(image, mbIndex); }
-  unsigned readOutput(unsigned mbIndex) { return layers.back()->readOutput(); }
+  void setInput(Image &image, unsigned mbIndex) {
+    inputLayer.setImage(image, mbIndex);
+  }
+  unsigned readOutput() {
+    return layers.back()->readOutput();
+  }
 };
 
 int main(int argc, char **argv) {
@@ -779,25 +803,25 @@ int main(int argc, char **argv) {
   trainingImages.erase(trainingImages.end() - validationSize,
                        trainingImages.end());
   // Create the network.
-//  std::cout << "Creating the network\n";
-//  auto FC1 = new FullyConnectedLayer(100, 28 * 28);
-//  auto FC2 = new FullyConnectedLayer(10, FC1->size());
-//  Network network(28, 28, { FC1, FC2 });
-  auto Conv1 = new ConvLayer(1, 5, 5, 28, 28);
-  auto MaxPool1 = new MaxPoolLayer(1, 2, 2, 24, 24);
-  auto FC1 = new FullyConnectedLayer(30, MaxPool1->size());
+  std::cout << "Creating the network\n";
+  auto FC1 = new FullyConnectedLayer(100, 28 * 28);
   auto FC2 = new FullyConnectedLayer(10, FC1->size());
-  Network network(28, 28, { Conv1, MaxPool1, FC1, FC2 });
+  Network network(28, 28, { FC1, FC2 });
+//  auto Conv1 = new ConvLayer(1, 5, 5, 28, 28);
+//  auto MaxPool1 = new MaxPoolLayer(1, 2, 2, 24, 24);
+//  auto FC1 = new FullyConnectedLayer(30, MaxPool1->size());
+//  auto FC2 = new FullyConnectedLayer(10, FC1->size());
+//  Network network(28, 28, { Conv1, MaxPool1, FC1, FC2 });
   // Run it.
   std::cout << "Running...\n";
-//  network.SGD(trainingImages,
-//              trainingLabels,
-//              validationImages,
-//              validationLabels,
-//              testImages,
-//              testLabels);
-  network.setInput(testImages[0], 0);
-  network.feedForward(0);
-  std::cout << network.readOutput(0) << "\n";
+  network.SGD(trainingImages,
+              trainingLabels,
+              validationImages,
+              validationLabels,
+              testImages,
+              testLabels);
+//  network.setInput(testImages[0], 0);
+//  network.feedForward(0);
+//  std::cout << network.readOutput() << "\n";
   return 0;
 }
