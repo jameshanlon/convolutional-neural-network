@@ -45,8 +45,8 @@ struct CrossEntropyCost {
 };
 
 /// Globals and constants.
-const unsigned numEpochs = 100;
-const unsigned mbSize = 10;
+const unsigned numEpochs = 1;//100;
+const unsigned mbSize = 1; //10;
 const float learningRate = 1.0f;
 const float lambda = 5.0f;
 const unsigned validationSize = 1000;
@@ -164,30 +164,30 @@ public:
   }
   void setImage(Image &image, unsigned mbIndex) {
     assert(image.size() == neurons.num_elements() && "invalid image size");
+    unsigned imageX = neurons.shape()[0];
     for (unsigned i = 0; i < image.size(); ++i) {
-      unsigned imageX = neurons.shape()[0];
-      neurons[i / imageX][i % imageX]->activations[mbIndex] = image[i];
+      neurons[i % imageX][i / imageX]->activations[mbIndex] = image[i];
     }
   }
   void initialiseDefaultWeights() override {
     DO_NOT_USE;
   }
-  virtual void calcBwdError(unsigned mbIndex) override {
+  virtual void calcBwdError(unsigned) override {
     DO_NOT_USE;
   }
-  void feedForward(unsigned mbIndex) override {
+  void feedForward(unsigned) override {
     DO_NOT_USE;
   }
-  void backPropogate(unsigned mbIndex) override {
+  void backPropogate(unsigned) override {
     DO_NOT_USE;
   }
-  void endBatch(unsigned numTrainingImages) override {
+  void endBatch(unsigned) override {
     DO_NOT_USE;
   }
-  void computeOutputError(uint8_t label, unsigned mbIndex) override {
+  void computeOutputError(uint8_t, unsigned) override {
     DO_NOT_USE;
   }
-  float computeOutputCost(uint8_t label, unsigned mbIndex) override {
+  float computeOutputCost(uint8_t, unsigned) override {
     DO_NOT_USE;
     return 0.0f;
   }
@@ -195,27 +195,27 @@ public:
     DO_NOT_USE;
     return 0.0f;
   }
-  void setInputs(Layer *layer) override {
+  void setInputs(Layer*) override {
     DO_NOT_USE;
   }
-  void setOutputs(Layer *layer) override {
+  void setOutputs(Layer*) override {
     DO_NOT_USE;
   }
   unsigned readOutput() override {
     DO_NOT_USE;
     return 0;
   }
-  float getBwdError(unsigned index, unsigned mbIndex) override {
+  float getBwdError(unsigned, unsigned) override {
     DO_NOT_USE;
     return 0.0f;
   }
-  float getBwdError(unsigned x, unsigned y, unsigned mbIndex) override {
+  float getBwdError(unsigned, unsigned, unsigned) override {
     DO_NOT_USE;
     return 0.0f;
   }
   Neuron &getNeuron(unsigned i) override {
     unsigned imageX = neurons.shape()[0];
-    return *neurons[i / imageX][i % imageX];
+    return *neurons[i % imageX][i / imageX];
   }
   Neuron &getNeuron(unsigned x, unsigned y) override { return *neurons[x][y]; }
   unsigned getDimension() override { return 2; }
@@ -248,27 +248,7 @@ public:
     bias = distribution(generator);
   }
 
-  /// Compute the output error (only the output neurons).
-  void computeOutputError(uint8_t label, unsigned mbIndex) {
-    float y = label == index ? 1.0f : 0.0f;
-    float error = costDelta(weightedInputs[mbIndex], activations[mbIndex], y);
-    errors[mbIndex] = error;
-  }
-
-  /// Compute the output cost (only the output neurons).
-  float computeOutputCost(uint8_t label, unsigned mbIndex) {
-    return costFn(activations[mbIndex], label);
-  }
-
-  float sumSquaredWeights() {
-    float result = 0.0f;
-    for (auto weight : weights) {
-      result += std::pow(weight, 2.0f);
-    }
-    return result;
-  }
-
-  void forwardBatch(unsigned mbIndex) {
+  void feedForward(unsigned mbIndex) {
     float weightedInput = 0.0f;
     for (unsigned i = 0; i < inputs->size(); ++i) {
       weightedInput += inputs->getNeuron(i).activations[mbIndex] * weights[i];
@@ -278,7 +258,7 @@ public:
     activations[mbIndex] = sigmoid(weightedInput);
   }
 
-  void backwardBatch(unsigned mbIndex) {
+  void backPropogate(unsigned mbIndex) {
     // Get the weight-error sum component from the next layer, then multiply by
     // the sigmoid derivative to get the error for this neuron.
     float error = outputs->getBwdError(index, mbIndex);
@@ -308,6 +288,26 @@ public:
     }
     biasDelta *= learningRate / mbSize;
     bias -= biasDelta;
+  }
+
+  /// Compute the output error (only the output neurons).
+  void computeOutputError(uint8_t label, unsigned mbIndex) {
+    float y = label == index ? 1.0f : 0.0f;
+    float error = costDelta(weightedInputs[mbIndex], activations[mbIndex], y);
+    errors[mbIndex] = error;
+  }
+
+  /// Compute the output cost (only the output neurons).
+  float computeOutputCost(uint8_t label, unsigned mbIndex) {
+    return costFn(activations[mbIndex], label);
+  }
+
+  float sumSquaredWeights() {
+    float result = 0.0f;
+    for (auto weight : weights) {
+      result += std::pow(weight, 2.0f);
+    }
+    return result;
   }
 
   void setInputs(Layer *inputs) { this->inputs = inputs; }
@@ -377,7 +377,7 @@ public:
 
   void feedForward(unsigned mbIndex) override {
     for (auto &neuron : neurons) {
-      neuron.forwardBatch(mbIndex);
+      neuron.feedForward(mbIndex);
     }
   }
 
@@ -395,7 +395,7 @@ public:
   /// Update errors from next layer.
   void backPropogate(unsigned mbIndex) override {
     for (auto &neuron : neurons) {
-      neuron.backwardBatch(mbIndex);
+      neuron.backPropogate(mbIndex);
     }
   }
 
@@ -422,13 +422,13 @@ public:
   float getBwdError(unsigned index, unsigned mbIndex) override {
     return bwdErrors[index][mbIndex];
   }
-  float getBwdError(unsigned x, unsigned y, unsigned mbIndex) override {
+  float getBwdError(unsigned, unsigned, unsigned) override {
     DO_NOT_USE;
     return 0.0f;
   }
 
   Neuron &getNeuron(unsigned index) override { return neurons.at(index); }
-  Neuron &getNeuron(unsigned x, unsigned y) override {
+  Neuron &getNeuron(unsigned, unsigned) override {
     DO_NOT_USE;
     return *new Neuron(0);
   }
@@ -442,18 +442,16 @@ public:
 class ConvNeuron : public Neuron {
   Layer *inputs;
   Layer *outputs;
-  unsigned dimX;
 public:
-  ConvNeuron(unsigned x, unsigned y, unsigned dimX) :
-      Neuron(x, y), dimX(dimX) {}
-  void forwardBatch(boost::multi_array_ref<float, 2> &weights,
+  ConvNeuron(unsigned x, unsigned y) : Neuron(x, y) {}
+  void feedForward(boost::multi_array_ref<float, 2> &weights,
                     float bias,
                     unsigned mbIndex) {
     // Convolve using each weight.
     float weightedInput = 0.0f;
     for (unsigned a = 0; a < weights.shape()[0]; ++a) {
       for (unsigned b = 0; b < weights.shape()[1]; ++b) {
-        float input = inputs->getNeuron(x, y).activations[mbIndex];
+        float input = inputs->getNeuron(x + a, y + b).activations[mbIndex];
         weightedInput += input * weights[a][b];
       }
     }
@@ -462,10 +460,9 @@ public:
     weightedInputs[mbIndex] = weightedInput;
     activations[mbIndex] = sigmoid(weightedInput);
   }
-  void backwardBatch(unsigned x, unsigned y, unsigned mbIndex) {
-    float error = outputs->getDimension() == 1
-                    ? outputs->getBwdError((dimX * y) + x, mbIndex)
-                    : outputs->getBwdError(x, y, mbIndex);
+  void backPropogate(unsigned x, unsigned y, unsigned mbIndex) {
+    assert(outputs->getDimension() == 2 && "Conv must be followed by max pool");
+    float error = outputs->getBwdError(x, y, mbIndex);
     error *= sigmoidDerivative(weightedInputs[mbIndex]);
     errors[mbIndex] = error;
   }
@@ -499,12 +496,12 @@ public:
             unsigned inputX, unsigned inputY) :
       inputs(nullptr), outputs(nullptr),
       inputX(inputX), inputY(inputY),
-      neurons(boost::extents[inputX - kernelX - 1][inputY - kernelY - 1]),
+      neurons(boost::extents[inputX - kernelX + 1][inputY - kernelY + 1]),
       weights(boost::extents[kernelX][kernelY]),
       bwdErrors(boost::extents[inputX][inputY][mbSize]) {
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
-        neurons[x][y] = new ConvNeuron(x, y, neurons.shape()[0]);
+        neurons[x][y] = new ConvNeuron(x, y);
       }
     }
   }
@@ -517,12 +514,13 @@ public:
         weights[a][b] = distribution(generator) / std::sqrt(inputs->size());
       }
     }
+    bias = distribution(generator);
   }
 
   void feedForward(unsigned mbIndex) override {
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
-        neurons[x][y]->forwardBatch(weights, bias, mbIndex);
+        neurons[x][y]->feedForward(weights, bias, mbIndex);
       }
     }
   }
@@ -535,7 +533,7 @@ public:
         for (unsigned a = 0; a < kernelX; ++a) {
           for (unsigned b = 0; b < kernelY; ++b) {
             bwdErrors[x][y][mbIndex] +=
-                weights[a][b] * neurons[x-a][y-b]->errors[mbIndex];
+                weights[a][b] * neurons[x - a][y - b]->errors[mbIndex];
           }
         }
       }
@@ -546,7 +544,7 @@ public:
     // Update errors from next layer.
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
-        neurons[x][y]->backwardBatch(x, y, mbIndex);
+        neurons[x][y]->backPropogate(x, y, mbIndex);
       }
     }
   }
@@ -562,7 +560,7 @@ public:
           // For each neuron.
           for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
             for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
-              weightDelta += inputs->getNeuron(x+a, y+b).activations[mb]
+              weightDelta += inputs->getNeuron(x + a, y + b).activations[mb]
                                  * neurons[x][y]->errors[mb];
             }
           }
@@ -586,11 +584,6 @@ public:
     }
     biasDelta *= learningRate / mbSize;
     bias -= biasDelta;
-  }
-
-  float computeOutputCost(uint8_t label, unsigned mbIndex) override {
-    // TODO
-    return 0.0f;
   }
 
   float getBwdError(unsigned x, unsigned y, unsigned mbIndex) override {
@@ -620,29 +613,33 @@ public:
                   [layer](ConvNeuron *n){ n->setOutputs(layer); });
   }
 
-  Neuron &getNeuron(unsigned i) override {
-    unsigned imageX = neurons.shape()[0];
-    return *neurons[i / imageX][i % imageX];
-  }
-
-  Neuron &getNeuron(unsigned x, unsigned y) override { return *neurons[x][y]; }
-
-  unsigned getDimension() override { return 2; }
-  unsigned size() override { return neurons.num_elements(); }
-
-  void computeOutputError(uint8_t label, unsigned mbIndex) override {
-    DO_NOT_USE;
-  }
-
-  float getBwdError(unsigned index, unsigned mbIndex) override {
+  float getBwdError(unsigned, unsigned) override {
     DO_NOT_USE; // No FC layers preceed conv layers.
     return 0.0f;
+  }
+
+  float computeOutputCost(uint8_t, unsigned) override {
+    DO_NOT_USE;
+    return 0.0f;
+  }
+
+  void computeOutputError(uint8_t, unsigned) override {
+    DO_NOT_USE;
   }
 
   unsigned readOutput() override {
     DO_NOT_USE;
     return 0;
   }
+
+  Neuron &getNeuron(unsigned i) override {
+    unsigned imageX = neurons.shape()[0];
+    return *neurons[i % imageX][i / imageX];
+  }
+
+  Neuron &getNeuron(unsigned x, unsigned y) override { return *neurons[x][y]; }
+  unsigned getDimension() override { return 2; }
+  unsigned size() override { return neurons.num_elements(); }
 };
 
 ///===--------------------------------------------------------------------===///
@@ -668,6 +665,8 @@ public:
     }
   }
 
+  void initialiseDefaultWeights() override { /* Skip */ }
+
   void feedForward(unsigned mbIndex) override {
     // For each neuron.
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
@@ -679,64 +678,64 @@ public:
             unsigned nX = x * poolX;
             unsigned nY = y * poolY;
             float input = inputs->getNeuron(nX, nY).activations[mbIndex];
-            neurons[x][y]->weightedInputs[mbIndex]
-                    = std::max(weightedInput, input);
+            float max = std::max(weightedInput, input);
+            neurons[x][y]->weightedInputs[mbIndex] = max;
           }
         }
       }
     }
   }
 
-  float getBwdError(unsigned x, unsigned y, unsigned mbIndex) override {
-    // Forward the backwards error component.
-    return outputs->getBwdError(x / poolX, y / poolY, mbIndex);
-  }
-
-  float computeOutputCost(uint8_t label, unsigned mbIndex) override {
-    // TODO
-    return 0.0f;
-  }
-
-  void setInputs(Layer *layer) override {
-    assert(layer->size() == (poolX * neurons.shape()[0])
-                             + (poolY * neurons.shape()[1])
-           && "invalid input layer size");
-    inputs = layer;
-  }
-
-  void setOutputs(Layer *layer) override {
-    outputs = layer;
-  }
-
-  Neuron &getNeuron(unsigned i) override {
-    unsigned imageX = neurons.shape()[0];
-    return *neurons[i / imageX][i % imageX];
-  }
-
-  Neuron &getNeuron(unsigned x, unsigned y) override { return *neurons[x][y]; }
-
-  unsigned getDimension() override { return 2; }
-  unsigned size() override { return neurons.num_elements(); }
-
-  void backPropogate(unsigned mbIndex) override { /* Skip */ }
-  float sumSquaredWeights() override { /* Skip */ return 0.0f; }
-  void initialiseDefaultWeights() override { /* Skip */ }
   void calcBwdError(unsigned mbIndex) override { /* Skip */ }
-  void endBatch(unsigned numTrainingImages) override { /* Skip */ }
+  void backPropogate(unsigned mbIndex) override { /* Skip */ }
 
-  float getBwdError(unsigned index, unsigned mbIndex) override {
+  float getBwdError(unsigned x, unsigned y, unsigned mbIndex) override {
+    // Forward the backwards error component from the next layer.
+    unsigned nx = x / poolX;
+    unsigned ny = y / poolY;
+    return outputs->getDimension() == 1
+              ? outputs->getBwdError((neurons.shape()[0] * ny) + nx, mbIndex)
+              : outputs->getBwdError(nx, ny, mbIndex);
+  }
+
+  void endBatch(unsigned numTrainingImages) override { /* Skip */ }
+  float sumSquaredWeights() override { /* Skip */ return 0.0f; }
+
+  float getBwdError(unsigned, unsigned) override {
     DO_NOT_USE; // No FC layers preceed max-pooling layers.
     return 0.0f;
   }
 
-  void computeOutputError(uint8_t label, unsigned mbIndex) override {
+  void computeOutputError(uint8_t, unsigned) override {
     DO_NOT_USE;
+  }
+
+  float computeOutputCost(uint8_t, unsigned) override {
+    DO_NOT_USE;
+    return 0.0f;
   }
 
   unsigned readOutput() override {
     DO_NOT_USE;
     return 0;
   }
+  void setInputs(Layer *layer) override {
+    assert(layer->size() == poolX * poolY * neurons.num_elements() &&
+           "invalid input layer size");
+    inputs = layer;
+  }
+
+  void setOutputs(Layer *layer) override { outputs = layer; }
+
+  Neuron &getNeuron(unsigned i) override {
+    unsigned imageX = neurons.shape()[0];
+    return *neurons[i % imageX][i / imageX];
+  }
+
+  Neuron &getNeuron(unsigned x, unsigned y) override { return *neurons[x][y]; }
+
+  unsigned getDimension() override { return 2; }
+  unsigned size() override { return neurons.num_elements(); }
 };
 
 ///===--------------------------------------------------------------------===///
@@ -850,12 +849,12 @@ public:
                    std::default_random_engine(seed));
       // For each mini batch.
       for (unsigned i = 0, end = trainingImages.size(); i < end; i += mbSize) {
-        //std::cout << "\rUpdate minibatch: " << i << " / " << end;
+        std::cout << "\rUpdate minibatch: " << i << " / " << end;
         updateMiniBatch(trainingImages.begin() + i,
                         trainingLabels.begin() + i,
                         trainingImages.size());
       }
-      //std::cout << '\n';
+      std::cout << '\n';
       // Evaluate the test set.
       std::cout << "Epoch " << epoch << " complete.\n";
       if (monitorEvaluationAccuracy) {
@@ -901,6 +900,9 @@ int main(int argc, char **argv) {
   std::cout << "Reading images\n";
   readImages("train-images-idx3-ubyte", trainingImages);
   readImages("t10k-images-idx3-ubyte", testImages);
+  // Reduce number of images.
+  trainingLabels.erase(trainingLabels.end() - 50000, trainingLabels.end());
+  trainingImages.erase(trainingImages.end() - 50000, trainingImages.end());
   // Take images from the training set for validation.
   std::vector<uint8_t> validationLabels(trainingLabels.end() - validationSize,
                                         trainingLabels.end());
@@ -912,14 +914,14 @@ int main(int argc, char **argv) {
                        trainingImages.end());
   // Create the network.
   std::cout << "Creating the network\n";
-  auto FC1 = new FullyConnectedLayer(100, 28 * 28);
+  //auto FC1 = new FullyConnectedLayer(100, 28 * 28);
+  //auto FC2 = new FullyConnectedLayer(10, FC1->size());
+  //Network network(28, 28, { FC1, FC2 });
+  auto Conv1 = new ConvLayer(5, 5, 28, 28);
+  auto MaxPool1 = new MaxPoolLayer(2, 2, 24, 24);
+  auto FC1 = new FullyConnectedLayer(30, MaxPool1->size());
   auto FC2 = new FullyConnectedLayer(10, FC1->size());
-  Network network(28, 28, { FC1, FC2 });
-//  auto Conv1 = new ConvLayer(5, 5, 28, 28);
-//  auto MaxPool1 = new MaxPoolLayer(2, 2, 24, 24);
-//  auto FC1 = new FullyConnectedLayer(30, MaxPool1->size());
-//  auto FC2 = new FullyConnectedLayer(10, FC1->size());
-//  Network network(28, 28, { Conv1, MaxPool1, FC1, FC2 });
+  Network network(28, 28, { Conv1, MaxPool1, FC1, FC2 });
   // Run it.
   std::cout << "Running...\n";
   network.SGD(trainingImages,
@@ -928,8 +930,5 @@ int main(int argc, char **argv) {
               validationLabels,
               testImages,
               testLabels);
-//  network.setInput(testImages[0], 0);
-//  network.feedForward(0);
-//  std::cout << network.readOutput() << "\n";
   return 0;
 }
