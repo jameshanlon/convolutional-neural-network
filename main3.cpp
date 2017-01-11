@@ -137,18 +137,18 @@ struct Neuron {
 
 struct Layer {
   virtual void initialiseDefaultWeights() = 0;
-  virtual void feedForward(unsigned mbIndex) = 0;
-  virtual void calcBwdError(unsigned mbIndex) = 0;
-  virtual void backPropogate(unsigned mbIndex) = 0;
+  virtual void feedForward(unsigned mb) = 0;
+  virtual void calcBwdError(unsigned mb) = 0;
+  virtual void backPropogate(unsigned mb) = 0;
   virtual void endBatch(unsigned numTrainingImages) = 0;
-  virtual void computeOutputError(uint8_t label, unsigned mbIndex) = 0;
-  virtual float computeOutputCost(uint8_t label, unsigned mbIndex) = 0;
+  virtual void computeOutputError(uint8_t label, unsigned mb) = 0;
+  virtual float computeOutputCost(uint8_t label, unsigned mb) = 0;
   virtual float sumSquaredWeights() = 0;
   virtual void setInputs(Layer *layer) = 0;
   virtual void setOutputs(Layer *layer) = 0;
   virtual unsigned readOutput() = 0;
-  virtual float getBwdError(unsigned index, unsigned mbIndex) = 0;
-  virtual float getBwdError(unsigned x, unsigned y, unsigned mbIndex) = 0;
+  virtual float getBwdError(unsigned index, unsigned mb) = 0;
+  virtual float getBwdError(unsigned x, unsigned y, unsigned mb) = 0;
   virtual Neuron &getNeuron(unsigned index) = 0;
   virtual Neuron &getNeuron(unsigned x, unsigned y) = 0;
   virtual unsigned getNumDims() = 0;
@@ -170,11 +170,11 @@ public:
       }
     }
   }
-  void setImage(Image &image, unsigned mbIndex) {
+  void setImage(Image &image, unsigned mb) {
     assert(image.size() == neurons.num_elements() && "invalid image size");
     unsigned imageX = neurons.shape()[0];
     for (unsigned i = 0; i < image.size(); ++i) {
-      neurons[i % imageX][i / imageX]->activations[mbIndex] = image[i];
+      neurons[i % imageX][i / imageX]->activations[mb] = image[i];
     }
   }
   void initialiseDefaultWeights() override {
@@ -258,22 +258,22 @@ public:
     bias = distribution(generator);
   }
 
-  void feedForward(unsigned mbIndex) {
+  void feedForward(unsigned mb) {
     float weightedInput = 0.0f;
     for (unsigned i = 0; i < inputs->size(); ++i) {
-      weightedInput += inputs->getNeuron(i).activations[mbIndex] * weights[i];
+      weightedInput += inputs->getNeuron(i).activations[mb] * weights[i];
     }
     weightedInput += bias;
-    weightedInputs[mbIndex] = weightedInput;
-    activations[mbIndex] = sigmoid(weightedInput);
+    weightedInputs[mb] = weightedInput;
+    activations[mb] = sigmoid(weightedInput);
   }
 
-  void backPropogate(unsigned mbIndex) {
+  void backPropogate(unsigned mb) {
     // Get the weight-error sum component from the next layer, then multiply by
     // the sigmoid derivative to get the error for this neuron.
-    float error = outputs->getBwdError(index, mbIndex);
-    error *= sigmoidDerivative(weightedInputs[mbIndex]);
-    errors[mbIndex] = error;
+    float error = outputs->getBwdError(index, mb);
+    error *= sigmoidDerivative(weightedInputs[mb]);
+    errors[mb] = error;
     //std::cout << "error for "<<index<<": "<<error<<"\n";
   }
 
@@ -304,15 +304,15 @@ public:
   }
 
   /// Compute the output error (only the output neurons).
-  void computeOutputError(uint8_t label, unsigned mbIndex) {
+  void computeOutputError(uint8_t label, unsigned mb) {
     float y = label == index ? 1.0f : 0.0f;
-    float error = costDelta(weightedInputs[mbIndex], activations[mbIndex], y);
-    errors[mbIndex] = error;
+    float error = costDelta(weightedInputs[mb], activations[mb], y);
+    errors[mb] = error;
   }
 
   /// Compute the output cost (only the output neurons).
-  float computeOutputCost(uint8_t label, unsigned mbIndex) {
-    return costFn(activations[mbIndex], label);
+  float computeOutputCost(uint8_t label, unsigned mb) {
+    return costFn(activations[mb], label);
   }
 
   float sumSquaredWeights() {
@@ -388,27 +388,27 @@ public:
     }
   }
 
-  void feedForward(unsigned mbIndex) override {
+  void feedForward(unsigned mb) override {
     for (auto &neuron : neurons) {
-      neuron.feedForward(mbIndex);
+      neuron.feedForward(mb);
     }
   }
 
   /// Calculate the l+1 component of the error for each neuron in prev layer.
-  void calcBwdError(unsigned mbIndex) override {
+  void calcBwdError(unsigned mb) override {
     for (unsigned i = 0; i < inputs->size(); ++i) {
       float error = 0.0f;
       for (auto &neuron : neurons) {
-        error += neuron.getWeight(i) * neuron.errors[mbIndex];
+        error += neuron.getWeight(i) * neuron.errors[mb];
       }
-      bwdErrors[i][mbIndex] = error;
+      bwdErrors[i][mb] = error;
     }
   }
 
   /// Update errors from next layer.
-  void backPropogate(unsigned mbIndex) override {
+  void backPropogate(unsigned mb) override {
     for (auto &neuron : neurons) {
-      neuron.backPropogate(mbIndex);
+      neuron.backPropogate(mb);
     }
   }
 
@@ -418,22 +418,22 @@ public:
     }
   }
 
-  void computeOutputError(uint8_t label, unsigned mbIndex) override {
+  void computeOutputError(uint8_t label, unsigned mb) override {
     for (auto &neuron : neurons) {
-      neuron.computeOutputError(label, mbIndex);
+      neuron.computeOutputError(label, mb);
     }
   }
 
-  float computeOutputCost(uint8_t label, unsigned mbIndex) override {
+  float computeOutputCost(uint8_t label, unsigned mb) override {
     float outputCost = 0.0f;
     for (auto &neuron : neurons) {
-      neuron.computeOutputCost(label, mbIndex);
+      neuron.computeOutputCost(label, mb);
     }
     return outputCost;
   }
 
-  float getBwdError(unsigned index, unsigned mbIndex) override {
-    return bwdErrors[index][mbIndex];
+  float getBwdError(unsigned index, unsigned mb) override {
+    return bwdErrors[index][mb];
   }
   float getBwdError(unsigned, unsigned, unsigned) override {
     DO_NOT_USE;
@@ -463,29 +463,29 @@ class ConvNeuron : public Neuron {
 public:
   ConvNeuron(unsigned x, unsigned y, unsigned dimX) : Neuron(x, y), dimX(dimX) {}
   void feedForward(boost::multi_array_ref<float, 2> &weights, float bias,
-                   unsigned mbIndex) {
+                   unsigned mb) {
     // Convolve using each weight.
     float weightedInput = 0.0f;
     for (unsigned a = 0; a < weights.shape()[0]; ++a) {
       for (unsigned b = 0; b < weights.shape()[1]; ++b) {
-        float input = inputs->getNeuron(x + a, y + b).activations[mbIndex];
+        float input = inputs->getNeuron(x + a, y + b).activations[mb];
         weightedInput += input * weights[a][b];
       }
     }
     // Add bias and apply non linerarity.
     weightedInput += bias;
-    weightedInputs[mbIndex] = weightedInput;
-    activations[mbIndex] = sigmoid(weightedInput);
-//    std::cout<<"activation["<<x<<","<<y<<"] = "<<activations[mbIndex]<<"\n";
+    weightedInputs[mb] = weightedInput;
+    activations[mb] = sigmoid(weightedInput);
+//    std::cout<<"activation["<<x<<","<<y<<"] = "<<activations[mb]<<"\n";
   }
-  void backPropogate(unsigned x, unsigned y, unsigned mbIndex) {
+  void backPropogate(unsigned x, unsigned y, unsigned mb) {
 //    assert(outputs->getNumDims() == 2 && "Conv must be followed by max pool");
-//    float error = outputs->getBwdError(x, y, mbIndex);
+//    float error = outputs->getBwdError(x, y, mb);
     float error = outputs->getNumDims() == 1
-              ? outputs->getBwdError((dimX * y) + x, mbIndex)
-              : outputs->getBwdError(x, y, mbIndex);
-    error *= sigmoidDerivative(weightedInputs[mbIndex]);
-    errors[mbIndex] = error;
+              ? outputs->getBwdError((dimX * y) + x, mb)
+              : outputs->getBwdError(x, y, mb);
+    error *= sigmoidDerivative(weightedInputs[mb]);
+    errors[mb] = error;
   }
   void setInputs(Layer *inputs) { this->inputs = inputs; }
   void setOutputs(Layer *outputs) { this->outputs = outputs; }
@@ -538,15 +538,15 @@ public:
     bias = distribution(generator);
   }
 
-  void feedForward(unsigned mbIndex) override {
+  void feedForward(unsigned mb) override {
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
-        neurons[x][y]->feedForward(weights, bias, mbIndex);
+        neurons[x][y]->feedForward(weights, bias, mb);
       }
     }
   }
 
-  void calcBwdError(unsigned mbIndex) override {
+  void calcBwdError(unsigned mb) override {
     // Calculate the l+1 component of the error for each neuron in prev layer.
     for (unsigned x = 0; x < inputX; ++x) {
       for (unsigned y = 0; y < inputY; ++y) {
@@ -557,20 +557,20 @@ public:
                 b <= y &&
                 x - a < neurons.shape()[0] &&
                 y - b < neurons.shape()[1]) {
-              error += weights[a][b] * neurons[x - a][y - b]->errors[mbIndex];
+              error += weights[a][b] * neurons[x - a][y - b]->errors[mb];
             }
           }
         }
-        bwdErrors[x][y][mbIndex] = error;
+        bwdErrors[x][y][mb] = error;
       }
     }
   }
 
-  void backPropogate(unsigned mbIndex) override {
+  void backPropogate(unsigned mb) override {
     // Update errors from next layer.
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
-        neurons[x][y]->backPropogate(x, y, mbIndex);
+        neurons[x][y]->backPropogate(x, y, mb);
       }
     }
   }
@@ -610,8 +610,8 @@ public:
     bias -= biasDelta;
   }
 
-  float getBwdError(unsigned x, unsigned y, unsigned mbIndex) override {
-    return bwdErrors[x][y][mbIndex];
+  float getBwdError(unsigned x, unsigned y, unsigned mb) override {
+    return bwdErrors[x][y][mb];
   }
 
   float sumSquaredWeights() override {
@@ -695,7 +695,7 @@ public:
 
   void initialiseDefaultWeights() override { /* Skip */ }
 
-  void feedForward(unsigned mbIndex) override {
+  void feedForward(unsigned mb) override {
     // For each neuron.
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
@@ -705,9 +705,9 @@ public:
           for (unsigned b = 0; b < poolY; ++b) {
             unsigned nX = (x * poolX) + a;
             unsigned nY = (y * poolY) + b;
-            float input = inputs->getNeuron(nX, nY).activations[mbIndex];
+            float input = inputs->getNeuron(nX, nY).activations[mb];
             float max = std::max(weightedInput, input);
-            neurons[x][y]->activations[mbIndex] = max;
+            neurons[x][y]->activations[mb] = max;
           }
         }
       }
@@ -717,13 +717,13 @@ public:
   void calcBwdError(unsigned) override { /* Skip */ }
   void backPropogate(unsigned) override { /* Skip */ }
 
-  float getBwdError(unsigned x, unsigned y, unsigned mbIndex) override {
+  float getBwdError(unsigned x, unsigned y, unsigned mb) override {
     // Forward the backwards error component from the next layer.
     unsigned nx = x / poolX;
     unsigned ny = y / poolY;
     return outputs->getNumDims() == 1
-              ? outputs->getBwdError((neurons.shape()[0] * ny) + nx, mbIndex)
-              : outputs->getBwdError(nx, ny, mbIndex);
+              ? outputs->getBwdError((neurons.shape()[0] * ny) + nx, mb)
+              : outputs->getBwdError(nx, ny, mb);
   }
 
   void endBatch(unsigned) override { /* Skip */ }
@@ -793,27 +793,27 @@ public:
   }
 
   /// The forward pass.
-  void feedForward(unsigned mbIndex) {
+  void feedForward(unsigned mb) {
     for (auto layer : layers) {
-      layer->feedForward(mbIndex);
+      layer->feedForward(mb);
     }
   }
 
   /// The backward pass.
-  void backPropogate(Image &image, uint8_t label, unsigned mbIndex) {
+  void backPropogate(Image &image, uint8_t label, unsigned mb) {
     // Set input.
-    inputLayer.setImage(image, mbIndex);
+    inputLayer.setImage(image, mb);
     // Feed forward.
-    feedForward(mbIndex);
+    feedForward(mb);
     // Compute output error in last layer.
-    layers.back()->computeOutputError(label, mbIndex);
-    layers.back()->calcBwdError(mbIndex);
+    layers.back()->computeOutputError(label, mb);
+    layers.back()->calcBwdError(mb);
     // Backpropagate the error and calculate component for next layer.
     for (int i = layers.size() - 2; i > 0; --i) {
-      layers[i]->backPropogate(mbIndex);
-      layers[i]->calcBwdError(mbIndex);
+      layers[i]->backPropogate(mb);
+      layers[i]->calcBwdError(mb);
     }
-    layers[0]->backPropogate(mbIndex);
+    layers[0]->backPropogate(mb);
   }
 
   void updateMiniBatch(std::vector<Image>::iterator trainingImagesIt,
@@ -910,8 +910,8 @@ public:
     }
   }
 
-  void setInput(Image &image, unsigned mbIndex) {
-    inputLayer.setImage(image, mbIndex);
+  void setInput(Image &image, unsigned mb) {
+    inputLayer.setImage(image, mb);
   }
   unsigned readOutput() {
     return layers.back()->readOutput();
