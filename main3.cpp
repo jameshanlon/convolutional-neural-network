@@ -12,6 +12,7 @@
 #include <memory>
 #include <random>
 #include <vector>
+#include "tbb/tbb.h"
 
 #define DO_NOT_USE assert(0 && "invalid call");
 
@@ -923,9 +924,9 @@ public:
                        std::vector<uint8_t>::iterator trainingLabelsIt,
                        unsigned numTrainingImages) {
     // For each training image and label, back propogate.
-    for (unsigned i = 0; i < mbSize; ++i) {
+    tbb::parallel_for(size_t(0), size_t(mbSize), [=](size_t i) {
       backPropogate(*(trainingImagesIt + i), *(trainingLabelsIt + i), i);
-    }
+    });
     // Gradient descent: for every neuron, compute the new weights and biases.
     for (int i = layers.size() - 1; i >= 0; --i) {
       layers[i]->endBatch(numTrainingImages);
