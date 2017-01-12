@@ -17,21 +17,27 @@
 
 using Image = std::vector<float>;
 
+/// Sigmoid activation function.
 static float sigmoid(float z) {
   return 1.0f / (1.0f + std::exp(-z));
 }
-
-/// Derivative of the sigmoid function.
 static float sigmoidDerivative(float z) {
   return sigmoid(z) * (1.0f - sigmoid(z));
 }
+
+/// Rectified linear activation function.
+static float relu(float z) { return std::max(0.0f, z); }
+static float reluDerivative(float z) { return z > 0.0f ? 1.0f : 0.0f; }
+
+float (*activationFn)(float) = sigmoid;
+float (*activationFnDerivative)(float) = sigmoidDerivative;
 
 struct QuadraticCost {
   static float compute(float activation, float label) {
     return 0.5f * std::pow(std::abs(activation - label), 2);
   }
   static float delta(float z, float activation, float label) {
-    return (activation - label) * sigmoidDerivative(z);
+    return (activation - label) * activationFnDerivative(z);
   }
 };
 
@@ -299,14 +305,14 @@ public:
     }
     weightedInput += bias;
     weightedInputs[mb] = weightedInput;
-    activations[mb] = sigmoid(weightedInput);
+    activations[mb] = activationFn(weightedInput);
   }
 
   void backPropogate(unsigned mb) {
     // Get the weight-error sum component from the next layer, then multiply by
     // the sigmoid derivative to get the error for this neuron.
     float error = outputs->getBwdError(index, mb);
-    error *= sigmoidDerivative(weightedInputs[mb]);
+    error *= activationFnDerivative(weightedInputs[mb]);
     errors[mb] = error;
   }
 
@@ -513,14 +519,14 @@ public:
     // Add bias and apply non linerarity.
     weightedInput += bias[z];
     weightedInputs[mb] = weightedInput;
-    activations[mb] = sigmoid(weightedInput);
+    activations[mb] = activationFn(weightedInput);
   }
   void backPropogate(unsigned mb) {
     // If next layer is 1D, map the x, y, z coordinates onto it.
     float error = outputs->getNumDims() == 1
                     ? outputs->getBwdError(getIndex(x, y, z, dimX, dimY), mb)
                     : outputs->getBwdError(x, y, z, mb);
-    error *= sigmoidDerivative(weightedInputs[mb]);
+    error *= activationFnDerivative(weightedInputs[mb]);
     errors[mb] = error;
   }
   void setInputs(Layer *inputs) { this->inputs = inputs; }
