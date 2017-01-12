@@ -14,7 +14,11 @@
 #include <vector>
 #include "tbb/tbb.h"
 
-#define DO_NOT_USE assert(0 && "invalid call");
+#ifdef NDEBUG
+#define UNREACHABLE() __builtin_unreachable()
+#else
+#define UNREACHABLE() __builtin_trap()
+#endif
 
 using Image = std::vector<float>;
 
@@ -216,48 +220,43 @@ public:
     }
   }
   void initialiseDefaultWeights() override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   virtual void calcBwdError(unsigned) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   void feedForward(unsigned) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   void backPropogate(unsigned) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   void endBatch(unsigned) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   void computeOutputError(uint8_t, unsigned) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   float computeOutputCost(uint8_t, unsigned) override {
-    DO_NOT_USE;
-    return 0.0f;
+    UNREACHABLE();
   }
   float sumSquaredWeights() override {
-    DO_NOT_USE;
-    return 0.0f;
+    UNREACHABLE();
   }
   void setInputs(Layer*) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   void setOutputs(Layer*) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
   unsigned readOutput() override {
-    DO_NOT_USE;
-    return 0;
+    UNREACHABLE();
   }
   float getBwdError(unsigned, unsigned) override {
-    DO_NOT_USE;
-    return 0.0f;
+    UNREACHABLE();
   }
   float getBwdError(unsigned, unsigned, unsigned, unsigned) override {
-    DO_NOT_USE;
-    return 0.0f;
+    UNREACHABLE();
   }
   Neuron &getNeuron(unsigned i) override {
     assert(i < neurons.num_elements() && "Neuron index out of range.");
@@ -475,14 +474,12 @@ public:
     return bwdErrors[mb][index];
   }
   float getBwdError(unsigned, unsigned, unsigned, unsigned) override {
-    DO_NOT_USE;
-    return 0.0f;
+    UNREACHABLE();
   }
 
   Neuron &getNeuron(unsigned index) override { return neurons.at(index); }
   Neuron &getNeuron(unsigned, unsigned, unsigned) override {
-    DO_NOT_USE;
-    return *new Neuron(0);
+    UNREACHABLE();
   }
   unsigned getNumDims() override { return 1; }
   unsigned getDim(unsigned i) override {
@@ -715,22 +712,19 @@ public:
   }
 
   float getBwdError(unsigned, unsigned) override {
-    DO_NOT_USE; // No FC layers preceed conv layers.
-    return 0.0f;
+    UNREACHABLE(); // No FC layers preceed conv layers.
   }
 
   float computeOutputCost(uint8_t, unsigned) override {
-    DO_NOT_USE;
-    return 0.0f;
+    UNREACHABLE();
   }
 
   void computeOutputError(uint8_t, unsigned) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
 
   unsigned readOutput() override {
-    DO_NOT_USE;
-    return 0;
+    UNREACHABLE();
   }
 
   Neuron &getNeuron(unsigned index) override {
@@ -828,22 +822,19 @@ public:
   float sumSquaredWeights() override { /* Skip */ return 0.0f; }
 
   float getBwdError(unsigned, unsigned) override {
-    DO_NOT_USE; // No FC layers preceed max-pooling layers.
-    return 0.0f;
+    UNREACHABLE(); // No FC layers preceed max-pooling layers.
   }
 
   void computeOutputError(uint8_t, unsigned) override {
-    DO_NOT_USE;
+    UNREACHABLE();
   }
 
   float computeOutputCost(uint8_t, unsigned) override {
-    DO_NOT_USE;
-    return 0.0f;
+    UNREACHABLE();
   }
 
   unsigned readOutput() override {
-    DO_NOT_USE;
-    return 0;
+    UNREACHABLE();
   }
 
   void setInputs(Layer *layer) override {
