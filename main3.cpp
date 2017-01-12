@@ -59,13 +59,13 @@ struct CrossEntropyCost {
 /// Globals and constants.
 const unsigned imageHeight = 28;
 const unsigned imageWidth = 28;
-const unsigned numEpochs = 1000;
+const unsigned numEpochs = 60;
 const unsigned mbSize = 10;
 const float learningRate = 0.03f;//1.0f;
 const float lambda = 0.1f;//5.0f;
 const unsigned validationSize = 0;//1000;
-const unsigned numTrainingImages = 10000;
-const unsigned numTestImages = 1000;
+const unsigned numTrainingImages = 60000;
+const unsigned numTestImages = 10000;
 const bool monitorEvaluationAccuracy = false;
 const bool monitorEvaluationCost = false;
 const bool monitorTrainingAccuracy = true;
@@ -1047,22 +1047,33 @@ int main(int argc, char **argv) {
 //  auto FC2 = new FullyConnectedLayer(10, FC1->size());
 //  Network network(28, 28, { FC1, FC2 });
 
+//  auto Conv1 = new ConvLayer(5, 5, 1, imageHeight, imageWidth, 1,
+//                             /* Feature maps = */ 10);
+//  auto Pool1 = new MaxPoolLayer(2, 2, Conv1->getDim(0),
+//                                      Conv1->getDim(1),
+//                                      Conv1->getDim(2));
+//  auto Conv2 = new ConvLayer(5, 5, Pool1->getDim(2), Pool1->getDim(0),
+//                                                     Pool1->getDim(1),
+//                                                     Pool1->getDim(2),
+//                             /* Feature maps = */ 10);
+//  auto Pool2 = new MaxPoolLayer(2, 2, Conv2->getDim(0),
+//                                      Conv2->getDim(1),
+//                                      Conv2->getDim(2));
+//  auto FC1 = new FullyConnectedLayer(100, Pool2->size());
+//  auto FC2 = new FullyConnectedLayer(10, FC1->size());
+//  Network network(imageHeight, imageWidth, {
+//            Conv1, Pool1, Conv2, Pool2, FC1, FC2 });
+
   auto Conv1 = new ConvLayer(5, 5, 1, imageHeight, imageWidth, 1,
-                             /* Feature maps = */ 10);
+                             /* Feature maps = */ 20);
   auto Pool1 = new MaxPoolLayer(2, 2, Conv1->getDim(0),
                                       Conv1->getDim(1),
                                       Conv1->getDim(2));
-  auto Conv2 = new ConvLayer(5, 5, Pool1->getDim(2), Pool1->getDim(0),
-                                                     Pool1->getDim(1),
-                                                     Pool1->getDim(2),
-                             /* Feature maps = */ 10);
-  auto Pool2 = new MaxPoolLayer(2, 2, Conv2->getDim(0),
-                                      Conv2->getDim(1),
-                                      Conv2->getDim(2));
-  auto FC1 = new FullyConnectedLayer(100, Pool2->size());
+  auto FC1 = new FullyConnectedLayer(100, Pool1->size());
   auto FC2 = new FullyConnectedLayer(10, FC1->size());
   Network network(imageHeight, imageWidth, {
-            Conv1, Pool1, Conv2, Pool2, FC1, FC2 });
+            Conv1, Pool1, FC1, FC2 });
+
   // Run it.
   std::cout << "Running...\n";
   network.SGD(trainingImages,
