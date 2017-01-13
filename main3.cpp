@@ -915,6 +915,7 @@ public:
                        std::vector<uint8_t>::iterator trainingLabelsIt,
                        unsigned numTrainingImages) {
     // For each training image and label, back propogate.
+    // Parallelise over the elements of the minibatch to improve performance.
     tbb::parallel_for(size_t(0), size_t(mbSize), [=](size_t i) {
       backPropogate(*(trainingImagesIt + i), *(trainingLabelsIt + i), i);
     });
@@ -947,17 +948,21 @@ public:
   }
 
   /// Evaluate the test set and return the number of correct classifications.
+  /// Parallelise the over the test images to improve performance.
   unsigned evaluateAccuracy(std::vector<Image> &testImages,
                             std::vector<uint8_t> &testLabels) {
-    unsigned result = 0;
-    for (unsigned i = 0; i < testImages.size(); ++i) {
-      inputLayer.setImage(testImages[i], 0);
-      feedForward(0);
-      if (layers.back()->readOutput() == testLabels[i]) {
-        ++result;
-      }
-    }
-    return result;
+    return tbb::parallel_reduce(
+             tbb::blocked_range<size_t>(0, testImages.size()), 0,
+             [&](tbb::blocked_range<size_t> r, unsigned total) {
+               for (size_t i = r.begin(); i < r.end(); ++i) {
+                 inputLayer.setImage(testImages[i], 0);
+                 feedForward(0);
+                 if (layers.back()->readOutput() == testLabels[i]) {
+                   ++total;
+                 }
+               }
+               return total;
+             }, std::plus<unsigned>());
   }
 
   void SGD(std::vector<Image> &trainingImages,
