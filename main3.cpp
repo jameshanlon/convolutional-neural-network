@@ -1015,6 +1015,8 @@ public:
 };
 
 int main(int argc, char **argv) {
+  tbb::task_scheduler_init init;
+  std::cout << "Num threads: " << init.default_num_threads() << "\n";
   dumpParams();
   // Read the MNIST data.
   std::vector<uint8_t> trainingLabels;
