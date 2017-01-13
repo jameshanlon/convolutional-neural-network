@@ -34,8 +34,8 @@ static float sigmoidDerivative(float z) {
 static float relu(float z) { return std::max(0.0f, z); }
 static float reluDerivative(float z) { return z > 0.0f ? 1.0f : 0.0f; }
 
-float (*activationFn)(float) = sigmoid;
-float (*activationFnDerivative)(float) = sigmoidDerivative;
+float (*activationFn)(float) = relu;
+float (*activationFnDerivative)(float) = reluDerivative;
 
 struct QuadraticCost {
   static float compute(float activation, float label) {
