@@ -1050,36 +1050,23 @@ int main(int argc, char **argv) {
   // Create the network.
   std::cout << "Creating the network\n";
 
-//  auto FC1 = new FullyConnectedLayer(100, 28 * 28);
-//  auto FC2 = new FullyConnectedLayer(10, FC1->size());
-//  Network network(28, 28, { FC1, FC2 });
+  //Network network(28, 28, {
+  //          new FullyConnectedLayer(100, 28 * 28),
+  //          new FullyConnectedLayer(10, FC1->size())});
 
-//  auto Conv1 = new ConvLayer(5, 5, 1, imageHeight, imageWidth, 1,
-//                             /* Feature maps = */ 10);
-//  auto Pool1 = new MaxPoolLayer(2, 2, Conv1->getDim(0),
-//                                      Conv1->getDim(1),
-//                                      Conv1->getDim(2));
-//  auto Conv2 = new ConvLayer(5, 5, Pool1->getDim(2), Pool1->getDim(0),
-//                                                     Pool1->getDim(1),
-//                                                     Pool1->getDim(2),
-//                             /* Feature maps = */ 10);
-//  auto Pool2 = new MaxPoolLayer(2, 2, Conv2->getDim(0),
-//                                      Conv2->getDim(1),
-//                                      Conv2->getDim(2));
-//  auto FC1 = new FullyConnectedLayer(100, Pool2->size());
-//  auto FC2 = new FullyConnectedLayer(10, FC1->size());
-//  Network network(imageHeight, imageWidth, {
-//            Conv1, Pool1, Conv2, Pool2, FC1, FC2 });
+  Network network(28, 28, {
+            new ConvLayer(5, 5, 1, 28, 28, 1, 20),
+            new MaxPoolLayer(2, 2, 24, 24, 20),
+            new FullyConnectedLayer(100, 12*12*20),
+            new FullyConnectedLayer(10, 100)});
 
-  auto Conv1 = new ConvLayer(5, 5, 1, imageHeight, imageWidth, 1,
-                             /* Feature maps = */ 20);
-  auto Pool1 = new MaxPoolLayer(2, 2, Conv1->getDim(0),
-                                      Conv1->getDim(1),
-                                      Conv1->getDim(2));
-  auto FC1 = new FullyConnectedLayer(100, Pool1->size());
-  auto FC2 = new FullyConnectedLayer(10, FC1->size());
-  Network network(imageHeight, imageWidth, {
-            Conv1, Pool1, FC1, FC2 });
+  //Network network(28, 28, {
+  //          new ConvLayer(5, 5, 1, 28, 28, 1, 10),
+  //          new MaxPoolLayer(2, 2, 24, 24, 20),
+  //          new ConvLayer(5, 5, 20, 12, 12, 20, 10),
+  //          new MaxPoolLayer(2, 2, 8, 8, 10),
+  //          new FullyConnectedLayer(100, 4*4*10),
+  //          new FullyConnectedLayer(10, 100)});
 
   // Run it.
   std::cout << "Running...\n";
