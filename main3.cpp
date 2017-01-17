@@ -187,7 +187,7 @@ struct Layer {
   virtual float sumSquaredWeights() = 0;
   virtual void setInputs(Layer<mbSize> *layer) = 0;
   virtual void setOutputs(Layer<mbSize> *layer) = 0;
-  virtual unsigned readOutput() = 0;
+  virtual unsigned readOutput(unsigned mb) = 0;
   virtual float getBwdError(unsigned index, unsigned mb) = 0;
   virtual float getBwdError(unsigned x, unsigned y, unsigned z, unsigned mb) = 0;
   virtual Neuron<mbSize> &getNeuron(unsigned index) = 0;
@@ -252,7 +252,7 @@ public:
   void setOutputs(Layer<mbSize>*) override {
     UNREACHABLE();
   }
-  unsigned readOutput() override {
+  unsigned readOutput(unsigned) override {
     UNREACHABLE();
   }
   float getBwdError(unsigned, unsigned) override {
@@ -402,11 +402,11 @@ public:
   }
 
   /// Determine the index of the highest output activation.
-  unsigned readOutput() override {
+  unsigned readOutput(unsigned mb) override {
     unsigned result = 0;
     float max = 0.0f;
     for (unsigned i = 0; i < neurons.size(); ++i) {
-      float output = neurons[i].activations[0];
+      float output = neurons[i].activations[mb];
       if (output > max) {
         result = i;
         max = output;
@@ -774,7 +774,7 @@ public:
     UNREACHABLE();
   }
 
-  unsigned readOutput() override {
+  unsigned readOutput(unsigned) override {
     UNREACHABLE();
   }
 
@@ -886,7 +886,7 @@ public:
     UNREACHABLE();
   }
 
-  unsigned readOutput() override {
+  unsigned readOutput(unsigned) override {
     UNREACHABLE();
   }
 
@@ -1004,22 +1004,32 @@ public:
     return cost;
   }
 
+  bool testImage(Image &image, uint8_t label, unsigned mb) {
+    inputLayer.setImage(image, mb);
+    feedForward(mb);
+    return layers.back()->readOutput(mb) == label;
+  }
+
   /// Evaluate the test set and return the number of correct classifications.
-  /// Parallelise the over the test images to improve performance.
+  /// Parallelise the over the test images (up to the minibatch size).
   unsigned evaluateAccuracy(std::vector<Image> &testImages,
                             std::vector<uint8_t> &testLabels) {
-    return tbb::parallel_reduce(
-             tbb::blocked_range<size_t>(0, testImages.size()), 0,
-             [&](tbb::blocked_range<size_t> r, unsigned total) {
-               for (size_t i = r.begin(); i < r.end(); ++i) {
-                 inputLayer.setImage(testImages[i], 0);
-                 feedForward(0);
-                 if (layers.back()->readOutput() == testLabels[i]) {
-                   ++total;
-                 }
-               }
-               return total;
-             }, std::plus<unsigned>());
+    unsigned result = 0;
+    for (unsigned i = 0, end = testImages.size(); i < end; i += mbSize) {
+      std::cout << "\rTest minibatch: " << i << " / " << end;
+      result +=
+        tbb::parallel_reduce(
+          tbb::blocked_range<size_t>(0, mbSize), 0,
+          [&](const tbb::blocked_range<size_t> &r, unsigned total) {
+            for (size_t mb = r.begin(); mb < r.end(); ++mb) {
+              total += testImage(*(testImages.begin() + i + mb),
+                                 *(testLabels.begin() + i + mb), mb);
+            }
+            return total;
+          }, std::plus<unsigned>());
+    }
+    std::cout << '\n';
+    return result;
   }
 
   void SGD(std::vector<Image> &trainingImages,
@@ -1114,18 +1124,18 @@ int main(int argc, char **argv) {
   //                                  CrossEntropyCost::compute,
   //                                  CrossEntropyCost::delta>()});
 
-  //Network<mbSize, numEpochs, 28, 28> network({
-  //          new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
-  //                        ReLU::compute, ReLU::deriv>(),
-  //          new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
-  //          new FullyConnectedLayer<mbSize, 100, 12*12*20,
-  //                                  ReLU::compute, ReLU::deriv,
-  //                                  CrossEntropyCost::compute,
-  //                                  CrossEntropyCost::delta>(),
-  //          new FullyConnectedLayer<mbSize, 10, 100,
-  //                                  ReLU::compute, ReLU::deriv,
-  //                                  CrossEntropyCost::compute,
-  //                                  CrossEntropyCost::delta>()});
+  Network<mbSize, numEpochs, 28, 28> network({
+            new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
+                          ReLU::compute, ReLU::deriv>(),
+            new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
+            new FullyConnectedLayer<mbSize, 100, 12*12*20,
+                                    ReLU::compute, ReLU::deriv,
+                                    CrossEntropyCost::compute,
+                                    CrossEntropyCost::delta>(),
+            new FullyConnectedLayer<mbSize, 10, 100,
+                                    ReLU::compute, ReLU::deriv,
+                                    CrossEntropyCost::compute,
+                                    CrossEntropyCost::delta>()});
 
   //Network<mbSize, numEpochs, 28, 28> network({
   //          new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
