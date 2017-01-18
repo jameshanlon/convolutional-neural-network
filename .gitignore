@@ -1,6 +1,5 @@
-nn*
-nndbg*
-build/
+Release/
+Debug
 CMakeLists.txt.user
 t10k-images-idx3-ubyte
 t10k-labels-idx1-ubyte
