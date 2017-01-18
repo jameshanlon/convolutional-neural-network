@@ -279,9 +279,7 @@ public:
 ///===--------------------------------------------------------------------===///
 template <unsigned mbSize,
           float (*activationFn)(float),
-          float (*activationFnDerivative)(float),
-          float (*costFn)(float, float),
-          float (*costDelta)(float, float, float)>
+          float (*activationFnDerivative)(float)>
 class FullyConnectedNeuron : public Neuron<mbSize> {
   Layer<mbSize> *inputs;
   Layer<mbSize> *outputs;
@@ -348,17 +346,8 @@ public:
     bias -= biasDelta;
   }
 
-  /// Compute the output error (only the output neurons).
-  void computeOutputError(uint8_t label, unsigned mb) {
-    float y = label == this->index ? 1.0f : 0.0f;
-    float error = costDelta(this->weightedInputs[mb], this->activations[mb], y);
-    this->errors[mb] = error;
-  }
-
-  /// Compute the output cost (only the output neurons).
-  float computeOutputCost(uint8_t label, unsigned mb) {
-    return costFn(this->activations[mb], label);
-  }
+  void computeOutputError(uint8_t, unsigned) { UNREACHABLE(); }
+  float computeOutputCost(uint8_t, unsigned) { UNREACHABLE(); }
 
   float sumSquaredWeights() {
     float result = 0.0f;
@@ -381,13 +370,10 @@ template <unsigned mbSize,
           unsigned layerSize,
           unsigned prevSize,
           float (*activationFn)(float),
-          float (*activationFnDerivative)(float),
-          float (*costFn)(float, float),
-          float (*costDelta)(float, float, float)>
+          float (*activationFnDerivative)(float)>
 class FullyConnectedLayer : public Layer<mbSize> {
   using FullyConnectedNeuronTy =
-    FullyConnectedNeuron<mbSize, activationFn, activationFnDerivative,
-                         costFn, costDelta>;
+      FullyConnectedNeuron<mbSize, activationFn, activationFnDerivative>;
   Layer<mbSize> *inputs;
   Layer<mbSize> *outputs;
   std::vector<FullyConnectedNeuronTy> neurons;
@@ -399,20 +385,6 @@ public:
     for (unsigned i = 0; i < layerSize; ++i) {
       neurons.push_back(FullyConnectedNeuronTy(i));
     }
-  }
-
-  /// Determine the index of the highest output activation.
-  unsigned readOutput(unsigned mb) override {
-    unsigned result = 0;
-    float max = 0.0f;
-    for (unsigned i = 0; i < neurons.size(); ++i) {
-      float output = neurons[i].activations[mb];
-      if (output > max) {
-        result = i;
-        max = output;
-      }
-    }
-    return result;
   }
 
   float sumSquaredWeights() override {
@@ -473,8 +445,165 @@ public:
     }
   }
 
-  void computeOutputError(uint8_t label, unsigned mb) override {
+  unsigned readOutput(unsigned) override {
+    UNREACHABLE();
+  }
+
+  void computeOutputError(uint8_t, unsigned) override {
+    UNREACHABLE();
+  }
+
+  float computeOutputCost(uint8_t, unsigned) override {
+    UNREACHABLE();
+  }
+
+  float getBwdError(unsigned index, unsigned mb) override {
+    return bwdErrors[mb][index];
+  }
+
+  float getBwdError(unsigned, unsigned, unsigned, unsigned) override {
+    UNREACHABLE();
+  }
+
+  Neuron<mbSize> &getNeuron(unsigned index) override {
+    return neurons.at(index);
+  }
+
+  Neuron<mbSize> &getNeuron(unsigned, unsigned, unsigned) override {
+    UNREACHABLE();
+  }
+
+  unsigned getNumDims() override { return 1; }
+
+  unsigned getDim(unsigned i) override {
+    assert(i == 0 && "Layer is 1D");
+    return neurons.size();
+  }
+
+  unsigned size() override { return neurons.size(); }
+};
+
+///===--------------------------------------------------------------------===///
+/// Softmax neuron.
+///===--------------------------------------------------------------------===///
+
+template <unsigned mbSize,
+          float (*activationFn)(float),
+          float (*activationFnDeriv)(float),
+          float (*costFn)(float, float),
+          float (*costDelta)(float, float, float)>
+class SoftMaxNeuron :
+    public FullyConnectedNeuron<mbSize, activationFn, activationFnDeriv> {
+public:
+  SoftMaxNeuron(unsigned index) :
+      FullyConnectedNeuron<mbSize, activationFn, activationFnDeriv>(index) {}
+  void computeOutputError(uint8_t label, unsigned mb) {
+    float y = label == this->index ? 1.0f : 0.0f;
+    float error = costDelta(this->weightedInputs[mb], this->activations[mb], y);
+    this->errors[mb] = error;
+  }
+  float computeOutputCost(uint8_t label, unsigned mb) {
+    return costFn(this->activations[mb], label);
+  }
+};
+
+///===--------------------------------------------------------------------===///
+/// Softmax layer.
+///===--------------------------------------------------------------------===///
+template <unsigned mbSize,
+          unsigned layerSize,
+          unsigned prevSize,
+          float (*activationFn)(float),
+          float (*activationFnDeriv)(float),
+          float (*costFn)(float, float),
+          float (*costDelta)(float, float, float)>
+class SoftMaxLayer : public Layer<mbSize> {
+  using SoftMaxNeuronTy =
+      SoftMaxNeuron<mbSize, activationFn, activationFnDeriv, costFn, costDelta>;
+  Layer<mbSize> *inputs;
+  Layer<mbSize> *outputs;
+  std::vector<SoftMaxNeuronTy> neurons;
+  boost::multi_array<float, 2> bwdErrors; // [mb][i]
+
+public:
+  SoftMaxLayer() :
+      bwdErrors(boost::extents[mbSize][prevSize]) {
+    for (unsigned i = 0; i < layerSize; ++i) {
+      this->neurons.push_back(SoftMaxNeuronTy(i));
+    }
+  }
+
+  float sumSquaredWeights() override {
+    float result = 0.0f;
     for (auto &neuron : neurons) {
+      result += neuron.sumSquaredWeights();
+    }
+    return result;
+  }
+
+  void setInputs(Layer<mbSize> *layer) override {
+    inputs = layer;
+    for (auto &neuron : neurons) {
+      neuron.setInputs(layer);
+    }
+  }
+
+  void setOutputs(Layer<mbSize>*) override {
+    UNREACHABLE();
+  }
+
+  void initialiseDefaultWeights() override {
+    for (auto &neuron : neurons) {
+      neuron.initialiseDefaultWeights();
+    }
+  }
+
+  void feedForward(unsigned mb) override {
+    for (auto &neuron : neurons) {
+      neuron.feedForward(mb);
+    }
+  }
+
+  /// Calculate the l+1 component of the error for each neuron in prev layer.
+  void calcBwdError(unsigned mb) override {
+    for (unsigned i = 0; i < inputs->size(); ++i) {
+      float error = 0.0f;
+      for (auto &neuron : neurons) {
+        error += neuron.getWeight(i) * neuron.errors[mb];
+      }
+      bwdErrors[mb][i] = error;
+    }
+  }
+
+  /// Update errors from next layer.
+  void backPropogate(unsigned mb) override {
+    for (auto &neuron : neurons) {
+      neuron.backPropogate(mb);
+    }
+  }
+
+  void endBatch(unsigned numTrainingImages) override {
+    for (auto &neuron : neurons) {
+      neuron.endBatch(numTrainingImages);
+    }
+  }
+
+  /// Determine the index of the highest output activation.
+  unsigned readOutput(unsigned mb) override {
+    unsigned result = 0;
+    float max = 0.0f;
+    for (unsigned i = 0; i < neurons.size(); ++i) {
+      float output = neurons[i].activations[mb];
+      if (output > max) {
+        result = i;
+        max = output;
+      }
+    }
+    return result;
+  }
+
+  void computeOutputError(uint8_t label, unsigned mb) override {
+    for (auto &neuron : this->neurons) {
       neuron.computeOutputError(label, mb);
     }
   }
@@ -490,6 +619,7 @@ public:
   float getBwdError(unsigned index, unsigned mb) override {
     return bwdErrors[mb][index];
   }
+
   float getBwdError(unsigned, unsigned, unsigned, unsigned) override {
     UNREACHABLE();
   }
@@ -497,32 +627,19 @@ public:
   Neuron<mbSize> &getNeuron(unsigned index) override {
     return neurons.at(index);
   }
+
   Neuron<mbSize> &getNeuron(unsigned, unsigned, unsigned) override {
     UNREACHABLE();
   }
+
   unsigned getNumDims() override { return 1; }
+
   unsigned getDim(unsigned i) override {
     assert(i == 0 && "Layer is 1D");
     return neurons.size();
   }
+
   unsigned size() override { return neurons.size(); }
-};
-
-///===--------------------------------------------------------------------===///
-/// Softmax layer.
-///===--------------------------------------------------------------------===///
-template <unsigned mbSize,
-          unsigned layerSize,
-          unsigned prevSize,
-          float (*activationFn)(float),
-          float (*activationFnDerivative)(float),
-          float (*costFn)(float, float),
-          float (*costDelta)(float, float, float)>
-class SoftMaxLayer : public FullyConnectedLayer<mbSize, layerSize, prevSize,
-                                                activationFn,
-                                                activationFnDerivative,
-                                                costFn, costDelta> {
-
 };
 
 ///===--------------------------------------------------------------------===///
@@ -1129,13 +1246,11 @@ int main(int argc, char **argv) {
                           ReLU::compute, ReLU::deriv>(),
             new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
             new FullyConnectedLayer<mbSize, 100, 12*12*20,
-                                    ReLU::compute, ReLU::deriv,
-                                    CrossEntropyCost::compute,
-                                    CrossEntropyCost::delta>(),
-            new FullyConnectedLayer<mbSize, 10, 100,
-                                    ReLU::compute, ReLU::deriv,
-                                    CrossEntropyCost::compute,
-                                    CrossEntropyCost::delta>()});
+                                    ReLU::compute, ReLU::deriv>(),
+            new SoftMaxLayer<mbSize, 10, 100,
+                             ReLU::compute, ReLU::deriv,
+                             CrossEntropyCost::compute,
+                             CrossEntropyCost::delta>()});
 
   //Network<mbSize, numEpochs, 28, 28> network({
   //          new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
