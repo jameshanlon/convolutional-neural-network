@@ -751,7 +751,7 @@ public:
       weights(boost::extents[numFMs][kernelX][kernelY][kernelZ]),
       neurons(boost::extents[numFMs][inputX-kernelX+1][inputY-kernelY+1]),
       bwdErrors(boost::extents[mbSize][inputX][inputY][inputZ]) {
-    assert(inputZ == kernelZ && "Kernel depth should match input depth");
+    static_assert(inputZ == kernelZ, "Kernel depth should match input depth");
     unsigned dimX = neurons.shape()[1];
     unsigned dimY = neurons.shape()[2];
     for (unsigned fm = 0; fm < numFMs; ++fm) {
@@ -958,8 +958,8 @@ public:
   MaxPoolLayer() :
       inputs(nullptr), outputs(nullptr),
       neurons(boost::extents[inputX / poolX][inputY / poolY][inputZ]) {
-    assert(inputX % poolX == 0 && "Dimension x mismatch with pooling");
-    assert(inputY % poolY == 0 && "Dimension y mismatch with pooling");
+    static_assert(inputX % poolX == 0, "Dimension x mismatch with pooling");
+    static_assert(inputY % poolY == 0, "Dimension y mismatch with pooling");
     for (unsigned x = 0; x < neurons.shape()[0]; ++x) {
       for (unsigned y = 0; y < neurons.shape()[1]; ++y) {
         for (unsigned z = 0; z < neurons.shape()[2]; ++z) {
