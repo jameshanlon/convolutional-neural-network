@@ -281,6 +281,7 @@ template <unsigned mbSize,
           float (*activationFn)(float),
           float (*activationFnDerivative)(float)>
 class FullyConnectedNeuron : public Neuron<mbSize> {
+protected:
   Layer<mbSize> *inputs;
   Layer<mbSize> *outputs;
   std::vector<float> weights;
@@ -497,6 +498,16 @@ class SoftMaxNeuron :
 public:
   SoftMaxNeuron(unsigned index) :
       FullyConnectedNeuron<mbSize, activationFn, activationFnDeriv>(index) {}
+  void feedForward(unsigned mb) {
+    // Only calculate weighted inputs.
+    float weightedInput = 0.0f;
+    for (unsigned i = 0; i < this->inputs->size(); ++i) {
+      weightedInput += this->inputs->getNeuron(i).activations[mb] * this->weights[i];
+    }
+    weightedInput += this->bias;
+    this->weightedInputs[mb] = weightedInput;
+  }
+  void backPropogate(unsigned) { UNREACHABLE(); }
   void computeOutputError(uint8_t label, unsigned mb) {
     float y = label == this->index ? 1.0f : 0.0f;
     float error = costDelta(this->weightedInputs[mb], this->activations[mb], y);
@@ -559,8 +570,18 @@ public:
   }
 
   void feedForward(unsigned mb) override {
+    // Calculate weighted inputs for each neuron.
     for (auto &neuron : neurons) {
       neuron.feedForward(mb);
+    }
+    // Sum the exponential values of the weighted inputs across neurons.
+    float sum = 0.0f;
+    for (auto &neuron : neurons) {
+      sum += std::exp(neuron.weightedInputs[mb]);
+    }
+    // Calculate each of the neuron's activations.
+    for (auto &neuron : neurons) {
+      neuron.activations[mb] = std::exp(neuron.weightedInputs[mb]) / sum;
     }
   }
 
@@ -1233,40 +1254,36 @@ int main(int argc, char **argv) {
 
   //Network<mbSize, numEpochs, 28, 28> network({
   //          new FullyConnectedLayer<mbSize, 100, 28 * 28,
-  //                                  ReLU::compute, ReLU::deriv,
-  //                                  CrossEntropyCost::compute,
-  //                                  CrossEntropyCost::delta>(),
-  //          new FullyConnectedLayer<mbSize, 10, 100,
-  //                                  ReLU::compute, ReLU::deriv,
-  //                                  CrossEntropyCost::compute,
-  //                                  CrossEntropyCost::delta>()});
-
-  Network<mbSize, numEpochs, 28, 28> network({
-            new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
-                          ReLU::compute, ReLU::deriv>(),
-            new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
-            new FullyConnectedLayer<mbSize, 100, 12*12*20,
-                                    ReLU::compute, ReLU::deriv>(),
-            new SoftMaxLayer<mbSize, 10, 100,
-                             ReLU::compute, ReLU::deriv,
-                             CrossEntropyCost::compute,
-                             CrossEntropyCost::delta>()});
+  //                                  ReLU::compute, ReLU::deriv>(),
+  //          new SoftMaxLayer<mbSize, 10, 100,
+  //                           Sigmoid::compute, Sigmoid::deriv,
+  //                           CrossEntropyCost::compute,
+  //                           CrossEntropyCost::delta>()});
 
   //Network<mbSize, numEpochs, 28, 28> network({
   //          new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
   //                        ReLU::compute, ReLU::deriv>(),
   //          new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
-  //          new ConvLayer<mbSize, 5, 5, 20, 12, 12, 20, 10,
-  //                        ReLU::compute, ReLU::deriv>(),
-  //          new MaxPoolLayer<mbSize, 2, 2, 8, 8, 10>(),
-  //          new FullyConnectedLayer<mbSize, 100, 4*4*10,
-  //                                  ReLU::compute, ReLU::deriv,
-  //                                  CrossEntropyCost::compute,
-  //                                  CrossEntropyCost::delta>(),
-  //          new FullyConnectedLayer<mbSize, 10, 100,
-  //                                  ReLU::compute, ReLU::deriv,
-  //                                  CrossEntropyCost::compute,
-  //                                  CrossEntropyCost::delta>()});
+  //          new FullyConnectedLayer<mbSize, 100, 12*12*20,
+  //                                  ReLU::compute, ReLU::deriv>(),
+  //          new SoftMaxLayer<mbSize, 10, 100,
+  //                           ReLU::compute, ReLU::deriv,
+  //                           CrossEntropyCost::compute,
+  //                           CrossEntropyCost::delta>()});
+
+  Network<mbSize, numEpochs, 28, 28> network({
+            new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
+                          ReLU::compute, ReLU::deriv>(),
+            new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
+            new ConvLayer<mbSize, 5, 5, 20, 12, 12, 20, 10,
+                          ReLU::compute, ReLU::deriv>(),
+            new MaxPoolLayer<mbSize, 2, 2, 8, 8, 10>(),
+            new FullyConnectedLayer<mbSize, 100, 4*4*10,
+                                    ReLU::compute, ReLU::deriv>(),
+            new SoftMaxLayer<mbSize, 10, 100,
+                             ReLU::compute, ReLU::deriv,
+                             CrossEntropyCost::compute,
+                             CrossEntropyCost::delta>()});
 
   // Run it.
   std::cout << "Running...\n";
