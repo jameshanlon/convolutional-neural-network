@@ -487,7 +487,6 @@ public:
 ///===--------------------------------------------------------------------===///
 /// Softmax neuron.
 ///===--------------------------------------------------------------------===///
-
 template <unsigned mbSize,
           float (*activationFn)(float),
           float (*activationFnDeriv)(float),
@@ -502,7 +501,8 @@ public:
     // Only calculate weighted inputs.
     float weightedInput = 0.0f;
     for (unsigned i = 0; i < this->inputs->size(); ++i) {
-      weightedInput += this->inputs->getNeuron(i).activations[mb] * this->weights[i];
+      weightedInput +=
+        this->inputs->getNeuron(i).activations[mb] * this->weights[i];
     }
     weightedInput += this->bias;
     this->weightedInputs[mb] = weightedInput;
@@ -703,7 +703,8 @@ public:
 
   void backPropogate(unsigned mb) {
     // If next layer is 1D, map the x, y, z coordinates onto it.
-    unsigned index = getIndex(this->x, this->y, this->z, this->dimX, this->dimY);
+    unsigned index =
+      getIndex(this->x, this->y, this->z, this->dimX, this->dimY);
     float error = outputs->getNumDims() == 1
                     ? outputs->getBwdError(index, mb)
                     : outputs->getBwdError(this->x, this->y, this->z, mb);
@@ -723,7 +724,6 @@ public:
 /// kernelY is num rows
 /// neuron(x, y) is row y, col x
 /// weights(a, b) is row b, col a
-/// TODO: weights, neurons and biases per feature map.
 ///===--------------------------------------------------------------------===///
 template <unsigned mbSize,
           unsigned kernelX,
