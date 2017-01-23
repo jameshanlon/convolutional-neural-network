@@ -69,8 +69,6 @@ const bool monitorEvaluationAccuracy = false;
 const bool monitorEvaluationCost = false;
 const bool monitorTrainingAccuracy = true;
 const bool monitorTrainingCost = false;
-float (*costFn)(float, float) = CrossEntropyCost::compute;
-float (*costDelta)(float, float, float) = CrossEntropyCost::delta;
 
 static void dumpParams() {
   std::cout << "=========================\n";
@@ -183,12 +181,8 @@ struct Layer {
   virtual void calcBwdError(unsigned mb) = 0;
   virtual void backPropogate(unsigned mb) = 0;
   virtual void endBatch(unsigned numTrainingImages) = 0;
-  virtual void computeOutputError(uint8_t label, unsigned mb) = 0;
-  virtual float computeOutputCost(uint8_t label, unsigned mb) = 0;
-  virtual float sumSquaredWeights() = 0;
   virtual void setInputs(Layer<mbSize> *layer) = 0;
   virtual void setOutputs(Layer<mbSize> *layer) = 0;
-  virtual unsigned readOutput(unsigned mb) = 0;
   virtual float getBwdError(unsigned index, unsigned mb) = 0;
   virtual float getBwdError(unsigned x, unsigned y, unsigned z, unsigned mb) = 0;
   virtual Neuron<mbSize> &getNeuron(unsigned index) = 0;
@@ -238,22 +232,10 @@ public:
   void endBatch(unsigned) override {
     UNREACHABLE();
   }
-  void computeOutputError(uint8_t, unsigned) override {
-    UNREACHABLE();
-  }
-  float computeOutputCost(uint8_t, unsigned) override {
-    UNREACHABLE();
-  }
-  float sumSquaredWeights() override {
-    UNREACHABLE();
-  }
   void setInputs(Layer<mbSize>*) override {
     UNREACHABLE();
   }
   void setOutputs(Layer<mbSize>*) override {
-    UNREACHABLE();
-  }
-  unsigned readOutput(unsigned) override {
     UNREACHABLE();
   }
   float getBwdError(unsigned, unsigned) override {
@@ -348,17 +330,6 @@ public:
     bias -= biasDelta;
   }
 
-  void computeOutputError(uint8_t, unsigned) { UNREACHABLE(); }
-  float computeOutputCost(uint8_t, unsigned) { UNREACHABLE(); }
-
-  float sumSquaredWeights() {
-    float result = 0.0f;
-    for (auto weight : weights) {
-      result += std::pow(weight, 2.0f);
-    }
-    return result;
-  }
-
   void setInputs(Layer<mbSize> *inputs) { this->inputs = inputs; }
   void setOutputs(Layer<mbSize> *outputs) { this->outputs = outputs; }
   unsigned numWeights() { return weights.size(); }
@@ -387,14 +358,6 @@ public:
     for (unsigned i = 0; i < layerSize; ++i) {
       neurons.push_back(FullyConnectedNeuronTy(i));
     }
-  }
-
-  float sumSquaredWeights() override {
-    float result = 0.0f;
-    for (auto &neuron : neurons) {
-      result += neuron.sumSquaredWeights();
-    }
-    return result;
   }
 
   void setInputs(Layer<mbSize> *layer) override {
@@ -445,18 +408,6 @@ public:
     for (auto &neuron : neurons) {
       neuron.endBatch(numTrainingImages);
     }
-  }
-
-  unsigned readOutput(unsigned) override {
-    UNREACHABLE();
-  }
-
-  void computeOutputError(uint8_t, unsigned) override {
-    UNREACHABLE();
-  }
-
-  float computeOutputCost(uint8_t, unsigned) override {
-    UNREACHABLE();
   }
 
   float getBwdError(unsigned index, unsigned mb) override {
@@ -517,6 +468,13 @@ public:
   float computeOutputCost(uint8_t label, unsigned mb) {
     return costFn(this->activations[mb], label);
   }
+  float sumSquaredWeights() {
+    float result = 0.0f;
+    for (auto weight : this->weights) {
+      result += std::pow(weight, 2.0f);
+    }
+    return result;
+  }
 };
 
 ///===--------------------------------------------------------------------===///
@@ -543,14 +501,6 @@ public:
     for (unsigned i = 0; i < layerSize; ++i) {
       this->neurons.push_back(SoftMaxNeuronTy(i));
     }
-  }
-
-  float sumSquaredWeights() override {
-    float result = 0.0f;
-    for (auto &neuron : neurons) {
-      result += neuron.sumSquaredWeights();
-    }
-    return result;
   }
 
   void setInputs(Layer<mbSize> *layer) override {
@@ -611,7 +561,7 @@ public:
   }
 
   /// Determine the index of the highest output activation.
-  unsigned readOutput(unsigned mb) override {
+  unsigned readOutput(unsigned mb) {
     unsigned result = 0;
     float max = 0.0f;
     for (unsigned i = 0; i < neurons.size(); ++i) {
@@ -624,18 +574,26 @@ public:
     return result;
   }
 
-  void computeOutputError(uint8_t label, unsigned mb) override {
-    for (auto &neuron : this->neurons) {
+  void computeOutputError(uint8_t label, unsigned mb) {
+    for (auto &neuron : neurons) {
       neuron.computeOutputError(label, mb);
     }
   }
 
-  float computeOutputCost(uint8_t label, unsigned mb) override {
+  float computeOutputCost(uint8_t label, unsigned mb) {
     float outputCost = 0.0f;
     for (auto &neuron : neurons) {
       neuron.computeOutputCost(label, mb);
     }
     return outputCost;
+  }
+
+  float sumSquaredWeights() {
+    float result = 0.0f;
+    for (auto &neuron : neurons) {
+      result += neuron.sumSquaredWeights();
+    }
+    return result;
   }
 
   float getBwdError(unsigned index, unsigned mb) override {
@@ -873,20 +831,6 @@ public:
     return bwdErrors[mb][x][y][z];
   }
 
-  float sumSquaredWeights() override {
-    float result = 0.0f;
-    for (unsigned fm = 0; fm < weights.shape()[0]; ++fm) {
-      for (unsigned a = 0; a < weights.shape()[1]; ++a) {
-        for (unsigned b = 0; b < weights.shape()[2]; ++b) {
-          for (unsigned c = 0; c < weights.shape()[3]; ++c) {
-            result += std::pow(weights[fm][a][b][c], 2.0f);
-          }
-        }
-      }
-    }
-    return result;
-  }
-
   void setInputs(Layer<mbSize> *layer) override {
     assert(layer->size() == inputX * inputY * inputZ &&
            "Invalid input layer size");
@@ -903,18 +847,6 @@ public:
 
   float getBwdError(unsigned, unsigned) override {
     UNREACHABLE(); // No FC layers preceed conv layers.
-  }
-
-  float computeOutputCost(uint8_t, unsigned) override {
-    UNREACHABLE();
-  }
-
-  void computeOutputError(uint8_t, unsigned) override {
-    UNREACHABLE();
-  }
-
-  unsigned readOutput(unsigned) override {
-    UNREACHABLE();
   }
 
   Neuron<mbSize> &getNeuron(unsigned index) override {
@@ -1011,22 +943,9 @@ public:
   }
 
   void endBatch(unsigned) override { /* Skip */ }
-  float sumSquaredWeights() override { /* Skip */ return 0.0f; }
 
   float getBwdError(unsigned, unsigned) override {
     UNREACHABLE(); // No FC layers preceed max-pooling layers.
-  }
-
-  void computeOutputError(uint8_t, unsigned) override {
-    UNREACHABLE();
-  }
-
-  float computeOutputCost(uint8_t, unsigned) override {
-    UNREACHABLE();
-  }
-
-  unsigned readOutput(unsigned) override {
-    UNREACHABLE();
   }
 
   void setInputs(Layer<mbSize> *layer) override {
@@ -1062,14 +981,26 @@ public:
 template <unsigned mbSize,
           unsigned numEpochs,
           unsigned inputX,
-          unsigned inputY>
+          unsigned inputY,
+          unsigned softMaxSize,
+          unsigned lastLayerSize,
+          float (*activationFn)(float),
+          float (*activationFnDeriv)(float),
+          float (*costFn)(float, float),
+          float (*costDelta)(float, float, float)>
 class Network {
+  using SoftMaxLayerTy = SoftMaxLayer<mbSize, softMaxSize, lastLayerSize,
+                                      activationFn, activationFnDeriv,
+                                      costFn, costDelta>;
   using LayerTy = Layer<mbSize>;
   InputLayer<mbSize, inputX, inputY> inputLayer;
+  SoftMaxLayerTy *softMaxLayer;
   std::vector<LayerTy*> layers;
 
 public:
-  Network(std::vector<LayerTy*> layers) : layers(layers) {
+  Network(std::vector<LayerTy*> layers_) : layers(layers_) {
+    softMaxLayer = new SoftMaxLayerTy();
+    layers.push_back(softMaxLayer);
     // Set neuron inputs.
     layers[0]->setInputs(&inputLayer);
     layers[0]->initialiseDefaultWeights();
@@ -1097,8 +1028,8 @@ public:
     // Feed forward.
     feedForward(mb);
     // Compute output error in last layer.
-    layers.back()->computeOutputError(label, mb);
-    layers.back()->calcBwdError(mb);
+    softMaxLayer->computeOutputError(label, mb);
+    softMaxLayer->calcBwdError(mb);
     // Backpropagate the error and calculate component for next layer.
     for (int i = layers.size() - 2; i > 0; --i) {
       layers[i]->backPropogate(mb);
@@ -1121,14 +1052,6 @@ public:
     }
   }
 
-  float sumSquareWeights() {
-    float result = 0.0f;
-    for (auto &layer : layers) {
-      result += layer->sumSquaredWeights();
-    }
-    return result;
-  }
-
   /// Calculate the total cost for a dataset.
   float evaluateTotalCost(std::vector<Image> &images,
                           std::vector<uint8_t> &labels) {
@@ -1136,9 +1059,10 @@ public:
     for (unsigned i = 0; i < images.size(); ++i) {
       inputLayer.setImage(images[i], 0);
       feedForward(0);
-      cost += layers.back()->computeOutputCost(labels[i], 0) / images.size();
+      cost += softMaxLayer->computeOutputCost(labels[i], 0) / images.size();
       // Add the regularisation term.
-      cost += 0.5f * (lambda / images.size()) * sumSquareWeights();
+      cost +=
+          0.5f * (lambda / images.size()) * softMaxLayer->sumSquaredWeights();
     }
     return cost;
   }
@@ -1146,7 +1070,7 @@ public:
   bool testImage(Image &image, uint8_t label, unsigned mb) {
     inputLayer.setImage(image, mb);
     feedForward(mb);
-    return layers.back()->readOutput(mb) == label;
+    return softMaxLayer->readOutput(mb) == label;
   }
 
   /// Evaluate the test set and return the number of correct classifications.
@@ -1271,13 +1195,12 @@ int main(int argc, char **argv) {
   // Create the network.
   std::cout << "Creating the network\n";
 
-  //Network<mbSize, numEpochs, 28, 28> network({
-  //          new FullyConnectedLayer<mbSize, 100, 28 * 28,
-  //                                  ReLU::compute, ReLU::deriv>(),
-  //          new SoftMaxLayer<mbSize, 10, 100,
-  //                           Sigmoid::compute, Sigmoid::deriv,
-  //                           CrossEntropyCost::compute,
-  //                           CrossEntropyCost::delta>()});
+  Network<mbSize, numEpochs, 28, 28, 10, 100,
+          Sigmoid::compute, Sigmoid::deriv,
+          CrossEntropyCost::compute,
+          CrossEntropyCost::delta> network({
+            new FullyConnectedLayer<mbSize, 100, 28 * 28,
+                                    ReLU::compute, ReLU::deriv>()});
 
   //Network<mbSize, numEpochs, 28, 28> network({
   //          new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
@@ -1290,19 +1213,18 @@ int main(int argc, char **argv) {
   //                           CrossEntropyCost::compute,
   //                           CrossEntropyCost::delta>()});
 
-  Network<mbSize, numEpochs, 28, 28> network({
-            new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
-                          ReLU::compute, ReLU::deriv>(),
-            new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
-            new ConvLayer<mbSize, 5, 5, 20, 12, 12, 20, 10,
-                          ReLU::compute, ReLU::deriv>(),
-            new MaxPoolLayer<mbSize, 2, 2, 8, 8, 10>(),
-            new FullyConnectedLayer<mbSize, 100, 4*4*10,
-                                    ReLU::compute, ReLU::deriv>(),
-            new SoftMaxLayer<mbSize, 10, 100,
-                             ReLU::compute, ReLU::deriv,
-                             CrossEntropyCost::compute,
-                             CrossEntropyCost::delta>()});
+  //Network<mbSize, numEpochs, 28, 28, 10, 100,
+  //        ReLU::compute, ReLU::deriv,
+  //        CrossEntropyCost::compute,
+  //        CrossEntropyCost::delta> network({
+  //          new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
+  //                        ReLU::compute, ReLU::deriv>(),
+  //          new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
+  //          new ConvLayer<mbSize, 5, 5, 20, 12, 12, 20, 10,
+  //                        ReLU::compute, ReLU::deriv>(),
+  //          new MaxPoolLayer<mbSize, 2, 2, 8, 8, 10>(),
+  //          new FullyConnectedLayer<mbSize, 100, 4*4*10,
+  //                                  ReLU::compute, ReLU::deriv>()});
 
   // Run it.
   std::cout << "Running...\n";
