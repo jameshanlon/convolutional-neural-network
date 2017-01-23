@@ -1202,16 +1202,15 @@ int main(int argc, char **argv) {
             new FullyConnectedLayer<mbSize, 100, 28 * 28,
                                     ReLU::compute, ReLU::deriv>()});
 
-  //Network<mbSize, numEpochs, 28, 28> network({
+  //Network<mbSize, numEpochs, 28, 28, 10, 100,
+  //        ReLU::compute, ReLU::deriv,
+  //        CrossEntropyCost::compute,
+  //        CrossEntropyCost::delta> network({
   //          new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
   //                        ReLU::compute, ReLU::deriv>(),
   //          new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
   //          new FullyConnectedLayer<mbSize, 100, 12*12*20,
-  //                                  ReLU::compute, ReLU::deriv>(),
-  //          new SoftMaxLayer<mbSize, 10, 100,
-  //                           ReLU::compute, ReLU::deriv,
-  //                           CrossEntropyCost::compute,
-  //                           CrossEntropyCost::delta>()});
+  //                                  ReLU::compute, ReLU::deriv>()});
 
   //Network<mbSize, numEpochs, 28, 28, 10, 100,
   //        ReLU::compute, ReLU::deriv,
