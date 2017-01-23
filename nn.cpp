@@ -1,6 +1,7 @@
 #include <boost/multi_array.hpp>
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstdint>
@@ -1154,7 +1155,8 @@ public:
                             std::vector<uint8_t> &testLabels) {
     unsigned result = 0;
     for (unsigned i = 0, end = testImages.size(); i < end; i += mbSize) {
-      std::cout << "\rTest minibatch: " << i << " / " << end;
+      auto mbStart = std::chrono::high_resolution_clock::now();
+      // Parallel reduce over the minibatch.
       result +=
         tbb::parallel_reduce(
           tbb::blocked_range<size_t>(0, mbSize), 0,
@@ -1165,6 +1167,12 @@ public:
             }
             return total;
           }, std::plus<unsigned>());
+      auto mbEnd = std::chrono::high_resolution_clock::now();
+      auto ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(mbEnd-mbStart);
+      float imagesPerSec = (float(mbSize) / ms.count()) * 1000.0f;
+      std::cout << "\rTest minibatch " << i << " / " << end
+                << " (" << imagesPerSec << " imgs/s)";
     }
     std::cout << '\n';
     return result;
@@ -1178,6 +1186,7 @@ public:
            std::vector<uint8_t> &testLabels) {
     // For each epoch.
     for (unsigned epoch = 0; epoch < numEpochs; ++epoch) {
+      auto epochStart = std::chrono::high_resolution_clock::now();
       // Identically randomly shuffle the training images and labels.
       unsigned seed = std::time(nullptr);
       std::shuffle(trainingLabels.begin(), trainingLabels.end(),
@@ -1186,14 +1195,24 @@ public:
                    std::default_random_engine(seed));
       // For each mini batch.
       for (unsigned i = 0, end = trainingImages.size(); i < end; i += mbSize) {
-        std::cout << "\rUpdate minibatch: " << i << " / " << end;
+        auto mbStart = std::chrono::high_resolution_clock::now();
         updateMiniBatch(trainingImages.begin() + i,
                         trainingLabels.begin() + i,
                         trainingImages.size());
+        auto mbEnd = std::chrono::high_resolution_clock::now();
+        auto ms =
+          std::chrono::duration_cast<std::chrono::milliseconds>(mbEnd-mbStart);
+        float imagesPerSec = (float(mbSize) / ms.count()) * 1000.0f;
+        std::cout << "\rMinibatch " << i << " / " << end
+                  << " (" << imagesPerSec << " imgs/s)";
       }
       std::cout << '\n';
+      // Display end of epoch and time.
+      auto epochEnd = std::chrono::high_resolution_clock::now();
+      auto s =
+        std::chrono::duration_cast<std::chrono::seconds>(epochEnd-epochStart);
+      std::cout << "Epoch " << epoch << " complete in " << s.count() << " s.\n";
       // Evaluate the test set.
-      std::cout << "Epoch " << epoch << " complete.\n";
       if (monitorEvaluationAccuracy) {
         unsigned result = evaluateAccuracy(validationImages, validationLabels);
         std::cout << "Accuracy on evaluation data: "
