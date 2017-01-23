@@ -563,7 +563,7 @@ public:
   /// Determine the index of the highest output activation.
   unsigned readOutput(unsigned mb) {
     unsigned result = 0;
-    float max = 0.0f;
+    float max = std::numeric_limits<float>::min();
     for (unsigned i = 0; i < neurons.size(); ++i) {
       float output = neurons[i].activations[mb];
       if (output > max) {
