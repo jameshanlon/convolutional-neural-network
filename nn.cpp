@@ -59,7 +59,7 @@ struct CrossEntropyCost {
 const unsigned imageHeight = 28;
 const unsigned imageWidth = 28;
 const unsigned numEpochs = 60;
-const unsigned mbSize = 10;
+const unsigned mbSize = 20;
 const float learningRate = 0.03f;//1.0f;
 const float lambda = 0.1f;//5.0f;
 const unsigned validationSize = 0;//1000;
