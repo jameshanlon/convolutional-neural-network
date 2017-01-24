@@ -446,9 +446,11 @@ template <unsigned mbSize,
           float (*costDelta)(float, float, float)>
 class SoftMaxNeuron :
     public FullyConnectedNeuron<mbSize, activationFn, activationFnDeriv> {
+
 public:
   SoftMaxNeuron(unsigned index) :
       FullyConnectedNeuron<mbSize, activationFn, activationFnDeriv>(index) {}
+
   void feedForward(unsigned mb) {
     // Only calculate weighted inputs.
     float weightedInput = 0.0f;
@@ -459,15 +461,19 @@ public:
     weightedInput += this->bias;
     this->weightedInputs[mb] = weightedInput;
   }
+
   void backPropogate(unsigned) { UNREACHABLE(); }
+
   void computeOutputError(uint8_t label, unsigned mb) {
     float y = label == this->index ? 1.0f : 0.0f;
     float error = costDelta(this->weightedInputs[mb], this->activations[mb], y);
     this->errors[mb] = error;
   }
+
   float computeOutputCost(uint8_t label, unsigned mb) {
     return costFn(this->activations[mb], label);
   }
+
   float sumSquaredWeights() {
     float result = 0.0f;
     for (auto weight : this->weights) {
