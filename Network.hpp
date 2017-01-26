@@ -1,3 +1,6 @@
+#ifndef _NETWORK_H_
+#define _NETWORK_H_
+
 #include <boost/multi_array.hpp>
 #include <algorithm>
 #include <cassert>
@@ -14,14 +17,14 @@
 #include <random>
 #include <vector>
 #include "tbb/tbb.h"
+#include "Data.hpp"
+#include "Params.hpp"
 
 #ifdef NDEBUG
 #define UNREACHABLE() __builtin_unreachable()
 #else
 #define UNREACHABLE() __builtin_trap()
 #endif
-
-using Image = std::vector<float>;
 
 /// Sigmoid activation function.
 struct Sigmoid {
@@ -54,97 +57,6 @@ struct CrossEntropyCost {
     return activation - label;
   }
 };
-
-/// Globals and constants.
-const unsigned imageHeight = 28;
-const unsigned imageWidth = 28;
-const unsigned numEpochs = 60;
-const unsigned mbSize = 20;
-const float learningRate = 0.03f;//1.0f;
-const float lambda = 0.1f;//5.0f;
-const unsigned validationSize = 0;//1000;
-const unsigned numTrainingImages = 60000;
-const unsigned numTestImages = 10000;
-const bool monitorEvaluationAccuracy = false;
-const bool monitorEvaluationCost = false;
-const bool monitorTrainingAccuracy = true;
-const bool monitorTrainingCost = false;
-
-static void dumpParams() {
-  std::cout << "=========================\n";
-  std::cout << "Parameters\n";
-  std::cout << "=========================\n";
-  std::cout << "Num epochs       " << numEpochs << "\n";
-  std::cout << "Minibatch size   " << mbSize << "\n";
-  std::cout << "Learning rate    " << learningRate << "\n";
-  std::cout << "Lambda           " << lambda << "\n";
-  std::cout << "Validation size  " << validationSize << "\n";
-  std::cout << "Training images  " << numTrainingImages << "\n";
-  std::cout << "Testing images   " << numTestImages << "\n";
-  std::cout << "=========================\n";
-}
-
-static void readLabels(const char *filename,
-                       std::vector<uint8_t> &labels) {
-  std::ifstream file;
-  file.open(filename, std::ios::binary | std::ios::in);
-  if (!file.good()) {
-    std::cout << "Error opening file " << filename << '\n';
-    std::exit(1);
-  }
-  uint32_t magicNumber, numItems;
-  file.read(reinterpret_cast<char*>(&magicNumber), 4);
-  file.read(reinterpret_cast<char*>(&numItems), 4);
-  magicNumber = __builtin_bswap32(magicNumber);
-  numItems = __builtin_bswap32(numItems);
-  std::cout << "Magic number: " << magicNumber << "\n";
-  std::cout << "Num items:    " << numItems << "\n";
-  for (unsigned i = 0; i < numItems; ++i) {
-    uint8_t label;
-    file.read(reinterpret_cast<char*>(&label), 1);
-    labels.push_back(label);
-  }
-  file.close();
-}
-
-static void readImages(const char *filename,
-                       std::vector<Image> &images) {
-  std::ifstream file;
-  file.open(filename, std::ios::binary | std::ios::in);
-  if (!file.good()) {
-    std::cout << "Error opening file " << filename << '\n';
-    std::exit(1);
-  }
-  uint32_t magicNumber, numImages, numRows, numCols;
-  file.read(reinterpret_cast<char*>(&magicNumber), 4);
-  file.read(reinterpret_cast<char*>(&numImages), 4);
-  file.read(reinterpret_cast<char*>(&numRows), 4);
-  file.read(reinterpret_cast<char*>(&numCols), 4);
-  magicNumber = __builtin_bswap32(magicNumber);
-  numImages = __builtin_bswap32(numImages);
-  numRows = __builtin_bswap32(numRows);
-  numCols = __builtin_bswap32(numCols);
-  std::cout << "Magic number: " << magicNumber << "\n";
-  std::cout << "Num images:   " << numImages << "\n";
-  std::cout << "Num rows:     " << numRows << "\n";
-  std::cout << "Num cols:     " << numCols << "\n";
-  assert(numRows == imageHeight && numCols == imageWidth &&
-         "unexpected image size");
-  for (unsigned i = 0; i < numImages; ++i) {
-    Image image(numRows*numCols);
-    for (unsigned j = 0; j < numRows; ++j) {
-      for (unsigned k = 0; k < numCols; ++k) {
-        uint8_t pixel;
-        file.read(reinterpret_cast<char*>(&pixel), 1);
-        // Scale the pixel value to between 0 (white) and 1 (black).
-        float value = static_cast<float>(pixel) / 255.0;
-        image[(j*numRows)+k] = value;
-      }
-    }
-    images.push_back(image);
-  }
-  file.close();
-}
 
 /// Helper functions for conversions between 1D and 3D coordinates.
 static inline unsigned getX(unsigned index, unsigned dimX) {
@@ -262,17 +174,21 @@ public:
 ///===--------------------------------------------------------------------===///
 template <unsigned mbSize,
           float (*activationFn)(float) = nullptr,
-          float (*activationFnDerivative)(float) = nullptr>
+          float (*activationFnDeriv)(float) = nullptr>
 class FullyConnectedNeuron : public Neuron<mbSize> {
 protected:
+  float learningRate;
+  float lambda;
   Layer<mbSize> *inputs;
   Layer<mbSize> *outputs;
   std::vector<float> weights;
   float bias;
 
 public:
-  FullyConnectedNeuron(unsigned index) :
-    Neuron<mbSize>(index), inputs(nullptr), outputs(nullptr) {}
+  FullyConnectedNeuron(unsigned index, float learningRate, float lambda) :
+    Neuron<mbSize>(index),
+    learningRate(learningRate), lambda(lambda),
+    inputs(nullptr), outputs(nullptr) {}
 
   void initialiseDefaultWeights() {
     // Initialise all weights with random values from normal distribution with
@@ -301,7 +217,7 @@ public:
     // Get the weight-error sum component from the next layer, then multiply by
     // the sigmoid derivative to get the error for this neuron.
     float error = outputs->getBwdError(this->index, mb);
-    error *= activationFnDerivative(this->weightedInputs[mb]);
+    error *= activationFnDeriv(this->weightedInputs[mb]);
     this->errors[mb] = error;
   }
 
@@ -343,20 +259,21 @@ template <unsigned mbSize,
           unsigned layerSize,
           unsigned prevSize,
           float (*activationFn)(float),
-          float (*activationFnDerivative)(float)>
+          float (*activationFnDeriv)(float)>
 class FullyConnectedLayer : public Layer<mbSize> {
   using FullyConnectedNeuronTy =
-      FullyConnectedNeuron<mbSize, activationFn, activationFnDerivative>;
+      FullyConnectedNeuron<mbSize, activationFn, activationFnDeriv>;
   Layer<mbSize> *inputs;
   Layer<mbSize> *outputs;
   std::vector<FullyConnectedNeuronTy> neurons;
   boost::multi_array<float, 2> bwdErrors; // [mb][i]
 
 public:
-  FullyConnectedLayer() :
+  FullyConnectedLayer(Params params) :
       bwdErrors(boost::extents[mbSize][prevSize]) {
     for (unsigned i = 0; i < layerSize; ++i) {
-      neurons.push_back(FullyConnectedNeuronTy(i));
+      auto n = FullyConnectedNeuronTy(i, params.learningRate, params.lambda);
+      neurons.push_back(n);
     }
   }
 
@@ -445,8 +362,8 @@ template <unsigned mbSize,
 class SoftMaxNeuron : public FullyConnectedNeuron<mbSize> {
 
 public:
-  SoftMaxNeuron(unsigned index) :
-      FullyConnectedNeuron<mbSize>(index) {}
+  SoftMaxNeuron(unsigned index, float learningRate, float lambda) :
+      FullyConnectedNeuron<mbSize>(index, learningRate, lambda) {}
 
   void feedForward(unsigned mb) {
     // Only calculate weighted inputs.
@@ -496,10 +413,10 @@ class SoftMaxLayer : public Layer<mbSize> {
   boost::multi_array<float, 2> bwdErrors; // [mb][i]
 
 public:
-  SoftMaxLayer() :
+  SoftMaxLayer(float learningRate, float lambda) :
       bwdErrors(boost::extents[mbSize][prevSize]) {
     for (unsigned i = 0; i < layerSize; ++i) {
-      this->neurons.push_back(SoftMaxNeuronTy(i));
+      this->neurons.push_back(SoftMaxNeuronTy(i, learningRate, lambda));
     }
   }
 
@@ -625,7 +542,7 @@ public:
 ///===--------------------------------------------------------------------===///
 template <unsigned mbSize,
           float (*activationFn)(float),
-          float (*activationFnDerivative)(float)>
+          float (*activationFnDeriv)(float)>
 class ConvNeuron : public Neuron<mbSize> {
   Layer<mbSize> *inputs;
   Layer<mbSize> *outputs;
@@ -665,7 +582,7 @@ public:
     float error = outputs->getNumDims() == 1
                     ? outputs->getBwdError(index, mb)
                     : outputs->getBwdError(this->x, this->y, this->z, mb);
-    error *= activationFnDerivative(this->weightedInputs[mb]);
+    error *= activationFnDeriv(this->weightedInputs[mb]);
     this->errors[mb] = error;
   }
 
@@ -693,6 +610,8 @@ template <unsigned mbSize,
           float (*activationFnDeriv)(float)>
 class ConvLayer : public Layer<mbSize> {
   using ConvNeuronTy = ConvNeuron<mbSize, activationFn, activationFnDeriv>;
+  float learningRate;
+  float lambda;
   Layer<mbSize> *inputs;
   Layer<mbSize> *outputs;
   boost::multi_array<float, 1> bias;            // [fm]
@@ -701,7 +620,8 @@ class ConvLayer : public Layer<mbSize> {
   boost::multi_array<float, 4> bwdErrors;       // [mb][x][y][z]
 
 public:
-  ConvLayer() :
+  ConvLayer(Params params) :
+      learningRate(params.learningRate), lambda(params.lambda),
       inputs(nullptr), outputs(nullptr),
       bias(boost::extents[numFMs]),
       weights(boost::extents[numFMs][kernelX][kernelY][kernelZ]),
@@ -976,7 +896,6 @@ public:
 /// The network.
 ///===--------------------------------------------------------------------===///
 template <unsigned mbSize,
-          unsigned numEpochs,
           unsigned inputX,
           unsigned inputY,
           unsigned softMaxSize,
@@ -987,13 +906,15 @@ class Network {
   using SoftMaxLayerTy = SoftMaxLayer<mbSize, softMaxSize, lastLayerSize,
                                       costFn, costDelta>;
   using LayerTy = Layer<mbSize>;
+  Params params;
   InputLayer<mbSize, inputX, inputY> inputLayer;
   SoftMaxLayerTy *softMaxLayer;
   std::vector<LayerTy*> layers;
 
 public:
-  Network(std::vector<LayerTy*> layers_) : layers(layers_) {
-    softMaxLayer = new SoftMaxLayerTy();
+  Network(Params params, std::vector<LayerTy*> layers_) :
+      params(params), layers(layers_) {
+    softMaxLayer = new SoftMaxLayerTy(params.learningRate, params.lambda);
     layers.push_back(softMaxLayer);
     // Set neuron inputs.
     layers[0]->setInputs(&inputLayer);
@@ -1055,8 +976,8 @@ public:
       feedForward(0);
       cost += softMaxLayer->computeOutputCost(labels[i], 0) / images.size();
       // Add the regularisation term.
-      cost +=
-          0.5f * (lambda / images.size()) * softMaxLayer->sumSquaredWeights();
+      float sumSquaredWeights = softMaxLayer->sumSquaredWeights();
+      cost += 0.5f * (params.lambda / images.size()) * sumSquaredWeights;
     }
     return cost;
   }
@@ -1096,32 +1017,30 @@ public:
     return result;
   }
 
-  void SGD(std::vector<Image> &trainingImages,
-           std::vector<uint8_t> &trainingLabels,
-           std::vector<Image> &validationImages,
-           std::vector<uint8_t> &validationLabels,
-           std::vector<Image> &testImages,
-           std::vector<uint8_t> &testLabels) {
+  void SGD(Data &data) {
     // For each epoch.
-    for (unsigned epoch = 0; epoch < numEpochs; ++epoch) {
+    for (unsigned epoch = 0; epoch < params.numEpochs; ++epoch) {
       auto epochStart = std::chrono::high_resolution_clock::now();
       // Identically randomly shuffle the training images and labels.
       unsigned seed = std::time(nullptr);
-      std::shuffle(trainingLabels.begin(), trainingLabels.end(),
+      std::shuffle(data.getTrainingLabels().begin(),
+                   data.getTrainingLabels().end(),
                    std::default_random_engine(seed));
-      std::shuffle(trainingImages.begin(), trainingImages.end(),
+      std::shuffle(data.getTrainingImages().begin(),
+                   data.getTrainingImages().end(),
                    std::default_random_engine(seed));
       // For each mini batch.
-      for (unsigned i = 0, end = trainingImages.size(); i < end; i += mbSize) {
+      unsigned numTrainingImages = data.getTrainingImages().size();
+      for (unsigned i = 0; i < numTrainingImages; i += mbSize) {
         auto mbStart = std::chrono::high_resolution_clock::now();
-        updateMiniBatch(trainingImages.begin() + i,
-                        trainingLabels.begin() + i,
-                        trainingImages.size());
+        updateMiniBatch(data.getTrainingImages().begin() + i,
+                        data.getTrainingLabels().begin() + i,
+                        data.getTrainingImages().size());
         auto mbEnd = std::chrono::high_resolution_clock::now();
         auto ms =
           std::chrono::duration_cast<std::chrono::milliseconds>(mbEnd-mbStart);
         float imagesPerSec = (float(mbSize) / ms.count()) * 1000.0f;
-        std::cout << "\rMinibatch " << i << " / " << end
+        std::cout << "\rMinibatch " << i << " / " << numTrainingImages
                   << " (" << imagesPerSec << " imgs/s)";
       }
       std::cout << '\n';
@@ -1131,99 +1050,31 @@ public:
         std::chrono::duration_cast<std::chrono::seconds>(epochEnd-epochStart);
       std::cout << "Epoch " << epoch << " complete in " << s.count() << " s.\n";
       // Evaluate the test set.
-      if (monitorEvaluationAccuracy) {
-        unsigned result = evaluateAccuracy(validationImages, validationLabels);
+      if (params.monitorEvaluationAccuracy) {
+        unsigned result = evaluateAccuracy(data.getValidationImages(),
+                                           data.getValidationLabels());
         std::cout << "Accuracy on evaluation data: "
-                  << result << " / " << validationImages.size() << '\n';
+                  << result << " / " << data.getValidationImages().size()
+                  << '\n';
       }
-      if (monitorEvaluationCost) {
-        float cost = evaluateTotalCost(validationImages, validationLabels);
+      if (params.monitorEvaluationCost) {
+        float cost = evaluateTotalCost(data.getValidationImages(),
+                                       data.getValidationLabels());
         std::cout << "Cost on evaluation data: " << cost << "\n";
       }
-      if (monitorTrainingAccuracy) {
-        unsigned result = evaluateAccuracy(testImages, testLabels);
+      if (params.monitorTrainingAccuracy) {
+        unsigned result = evaluateAccuracy(data.getTestImages(),
+                                           data.getTestLabels());
         std::cout << "Accuracy on test data: "
-                  << result << " / " << testImages.size() << '\n';
+                  << result << " / " << data.getTestImages().size() << '\n';
       }
-      if (monitorTrainingCost) {
-        float cost = evaluateTotalCost(testImages, testLabels);
+      if (params.monitorTrainingCost) {
+        float cost = evaluateTotalCost(data.getTestImages(),
+                                       data.getTestLabels());
         std::cout << "Cost on test data: " << cost << "\n";
       }
     }
   }
 };
 
-int main(int argc, char **argv) {
-  tbb::task_scheduler_init init;
-  std::cout << "Num threads: " << init.default_num_threads() << "\n";
-  dumpParams();
-  // Read the MNIST data.
-  std::vector<uint8_t> trainingLabels;
-  std::vector<uint8_t> testLabels;
-  std::vector<Image> trainingImages;
-  std::vector<Image> testImages;
-  // Labels.
-  std::cout << "Reading labels\n";
-  readLabels("train-labels-idx1-ubyte", trainingLabels);
-  readLabels("t10k-labels-idx1-ubyte", testLabels);
-  //Images.
-  std::cout << "Reading images\n";
-  readImages("train-images-idx3-ubyte", trainingImages);
-  readImages("t10k-images-idx3-ubyte", testImages);
-  // Reduce number of training images and use them for test (for debugging).
-  trainingLabels.erase(trainingLabels.begin() + numTrainingImages,
-                       trainingLabels.end());
-  trainingImages.erase(trainingImages.begin() + numTrainingImages,
-                       trainingImages.end());
-  testLabels.erase(testLabels.begin() + numTestImages, testLabels.end());
-  testImages.erase(testImages.begin() + numTestImages, testImages.end());
-  // Take images from the training set for validation.
-  std::vector<uint8_t> validationLabels(trainingLabels.end() - validationSize,
-                                        trainingLabels.end());
-  std::vector<Image> validationImages(trainingImages.end() - validationSize,
-                                      trainingImages.end());
-  trainingLabels.erase(trainingLabels.end() - validationSize,
-                       trainingLabels.end());
-  trainingImages.erase(trainingImages.end() - validationSize,
-                       trainingImages.end());
-  // Create the network.
-  std::cout << "Creating the network\n";
-
-  //Network<mbSize, numEpochs, 28, 28, 10, 100,
-  //        Sigmoid::compute, Sigmoid::deriv,
-  //        CrossEntropyCost::compute,
-  //        CrossEntropyCost::delta> network({
-  //    new FullyConnectedLayer<mbSize, 100, 28 * 28,
-  //                            ReLU::compute, ReLU::deriv>()});
-
-  //Network<mbSize, numEpochs, 28, 28, 10, 100,
-  //        CrossEntropyCost::compute,
-  //        CrossEntropyCost::delta> network({
-  //    new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
-  //                  ReLU::compute, ReLU::deriv>(),
-  //    new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
-  //    new FullyConnectedLayer<mbSize, 100, 12*12*20,
-  //                            ReLU::compute, ReLU::deriv>()});
-
-  Network<mbSize, numEpochs, 28, 28, 10, 100,
-          CrossEntropyCost::compute,
-          CrossEntropyCost::delta> network({
-      new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
-                    ReLU::compute, ReLU::deriv>(),
-      new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
-      new ConvLayer<mbSize, 5, 5, 20, 12, 12, 20, 10,
-                    ReLU::compute, ReLU::deriv>(),
-      new MaxPoolLayer<mbSize, 2, 2, 8, 8, 10>(),
-      new FullyConnectedLayer<mbSize, 100, 4*4*10,
-                                    ReLU::compute, ReLU::deriv>()});
-
-  // Run it.
-  std::cout << "Running...\n";
-  network.SGD(trainingImages,
-              trainingLabels,
-              validationImages,
-              validationLabels,
-              testImages,
-              testLabels);
-  return 0;
-}
+#endif
