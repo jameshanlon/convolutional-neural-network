@@ -1,6 +1,4 @@
-#include <cstdint>
 #include <iostream>
-#include <vector>
 #include "tbb/tbb.h"
 #include "Data.hpp"
 #include "Params.hpp"
