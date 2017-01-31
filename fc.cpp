@@ -9,8 +9,8 @@ int main(void) {
   std::cout << "Num threads: " << init.default_num_threads() << "\n";
   constexpr unsigned mbSize = 20;
   Params params;
-  params.numEpochs = 60;
-  params.learningRate = 0.03f;
+  params.numEpochs = 200;
+  params.learningRate = 0.5f;
   params.lambda = 0.1f;
   params.numValidationImages = 0;
   params.numTrainingImages = 60000;

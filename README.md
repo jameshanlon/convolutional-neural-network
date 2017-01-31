@@ -21,18 +21,19 @@ $ ./conv2
 ...
 ```
 
-Things implemented:
+Features implemented:
 
 - Stochastic gradient descent.
 - Quadratic and cross entropy cost functions.
 - Sigmoid and rectified-linear activation functions.
-- Weight initialisation from normally-distributed random numbers with mean 0
-  and variance 1.
+- Weight initialisation from normally-distributed random numbers.
 - Minibatching.
 - Regularisation.
 - Fully-connected and soft-max layers.
 - Convolutional and max-pooling layers.
 - Convolutional feature maps.
+- Use of a third data set for validation.
+- Reporting of cost and accuracy during training.
 
 There are three main source files:
 
