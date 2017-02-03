@@ -7,7 +7,7 @@
 int main(void) {
   tbb::task_scheduler_init init;
   std::cout << "Num threads: " << init.default_num_threads() << "\n";
-  constexpr unsigned mbSize = 20;
+  constexpr unsigned mbSize = 10;
   Params params;
   params.numEpochs = 60;
   params.learningRate = 0.03f;
