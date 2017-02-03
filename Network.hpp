@@ -876,12 +876,12 @@ public:
 
   Neuron<mbSize> &getNeuron(unsigned index) override {
     // Map a 1D index onto the 3D neurons (for Conv <- FC connections).
-    unsigned dimX = neurons.shape()[1];
-    unsigned dimY = neurons.shape()[2];
+    unsigned dimX = neurons.shape()[0];
+    unsigned dimY = neurons.shape()[1];
     unsigned x = getX(index, dimX);
     unsigned y = getY(index, dimX, dimY);
     unsigned z = getZ(index, dimX, dimY);
-    return *neurons[z][x][y];
+    return *neurons[x][y][z];
   }
 
   Neuron<mbSize> &getNeuron(unsigned x, unsigned y, unsigned z) override {
