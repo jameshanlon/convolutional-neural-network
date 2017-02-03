@@ -782,6 +782,7 @@ public:
   }
 
   unsigned getDim(unsigned i) override {
+    assert(i <= 2 && "Dimension out of range.");
     // Feature maps is inner dimension but corresponds to z.
     return i == 2 ? neurons.shape()[0] : neurons.shape()[i + 1];
   }
