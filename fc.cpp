@@ -7,7 +7,6 @@
 
 int main(void) {
   tbb::task_scheduler_init init;
-  std::cout << "Num threads: " << init.default_num_threads() << "\n";
   constexpr unsigned mbSize = 10;
   Params params;
   params.numEpochs = 200;
@@ -18,7 +17,7 @@ int main(void) {
   params.numTrainingImages = 60000;
   params.numTestImages = 10000;
   params.monitorTrainingAccuracy = true;
-  params.dump(mbSize);
+  params.dump(mbSize, init.default_num_threads());
   // Read the MNIST data.
   Data data(params);
   // Create the network.

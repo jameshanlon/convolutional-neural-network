@@ -15,10 +15,12 @@ struct Params {
   bool      monitorEvaluationCost     = false;
   bool      monitorTrainingAccuracy   = false;
   bool      monitorTrainingCost       = false;
-  void dump(unsigned mbSize /* mbSize is a template param */) {
-    std::cout << "=========================\n";
+  void dump(unsigned mbSize /* mbSize is a template param */,
+            unsigned numThreads /* returned by TBB object */) {
+    std::cout << "=============================\n";
     std::cout << "Parameters\n";
-    std::cout << "=========================\n";
+    std::cout << "-----------------------------\n";
+    std::cout << "Num threads       " << numThreads << "\n";
     std::cout << "Num epochs        " << numEpochs << "\n";
     std::cout << "Minibatch size    " << mbSize << "\n";
     std::cout << "Learning rate     " << learningRate << "\n";
@@ -27,7 +29,7 @@ struct Params {
     std::cout << "Training images   " << numTrainingImages << "\n";
     std::cout << "Testing images    " << numTestImages << "\n";
     std::cout << "Validation images " << numValidationImages << "\n";
-    std::cout << "=========================\n";
+    std::cout << "=============================\n";
   }
 };
 
