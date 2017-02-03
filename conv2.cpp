@@ -7,7 +7,7 @@
 int main(void) {
   tbb::task_scheduler_init init;
   std::cout << "Num threads: " << init.default_num_threads() << "\n";
-  constexpr unsigned mbSize = 20;
+  constexpr unsigned mbSize = 10;
   Params params;
   params.numEpochs = 60;
   params.learningRate = 0.03f;
@@ -31,7 +31,8 @@ int main(void) {
                     ReLU::compute, ReLU::deriv>(params),
       new MaxPoolLayer<mbSize, 2, 2, 8, 8, 10>(),
       new FullyConnectedLayer<mbSize, 100, 4*4*10,
-                              ReLU::compute, ReLU::deriv>(params)});
+                              Sigmoid::compute,
+                              Sigmoid::deriv>(params)});
   // Run it.
   std::cout << "Running...\n";
   network.SGD(data);

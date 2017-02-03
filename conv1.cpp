@@ -28,8 +28,8 @@ int main(void) {
                     ReLU::compute, ReLU::deriv>(params),
       new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
       new FullyConnectedLayer<mbSize, 100, 12*12*20,
-                              ReLU::compute,
-                              ReLU::deriv>(params)});
+                              Sigmoid::compute,
+                              Sigmoid::deriv>(params)});
   // Run it.
   std::cout << "Running...\n";
   network.SGD(data);
