@@ -8,6 +8,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -pedantic -march=native
 add_executable(fc    fc.cpp)
 add_executable(conv1 conv1.cpp)
 add_executable(conv2 conv2.cpp)
+add_executable(conv3 conv3.cpp)
 target_link_libraries(fc    ${Boost_LIBRARIES} ${TBB_LIBRARY})
 target_link_libraries(conv1 ${Boost_LIBRARIES} ${TBB_LIBRARY})
 target_link_libraries(conv2 ${Boost_LIBRARIES} ${TBB_LIBRARY})
+target_link_libraries(conv3 ${Boost_LIBRARIES} ${TBB_LIBRARY})
