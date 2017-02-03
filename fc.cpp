@@ -1,4 +1,5 @@
 #include <iostream>
+#include <chrono>
 #include "tbb/tbb.h"
 #include "Data.hpp"
 #include "Params.hpp"
@@ -12,6 +13,7 @@ int main(void) {
   params.numEpochs = 200;
   params.learningRate = 0.5f;
   params.lambda = 0.1f;
+  params.seed = std::time(nullptr);
   params.numValidationImages = 0;
   params.numTrainingImages = 60000;
   params.numTestImages = 10000;

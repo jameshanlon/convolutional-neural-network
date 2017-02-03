@@ -88,7 +88,7 @@ struct Neuron {
 
 template <unsigned mbSize>
 struct Layer {
-  virtual void initialiseDefaultWeights() = 0;
+  virtual void initialiseDefaultWeights(std::default_random_engine&) = 0;
   virtual void feedForward(unsigned mb) = 0;
   virtual void calcBwdError(unsigned mb) = 0;
   virtual void backPropogate(unsigned mb) = 0;
@@ -129,7 +129,7 @@ public:
       neurons[i % imageX][i / imageX][0]->activations[mb] = image[i];
     }
   }
-  void initialiseDefaultWeights() override {
+  void initialiseDefaultWeights(std::default_random_engine&) override {
     UNREACHABLE();
   }
   virtual void calcBwdError(unsigned) override {
@@ -190,17 +190,16 @@ public:
     learningRate(learningRate), lambda(lambda),
     inputs(nullptr), outputs(nullptr) {}
 
-  void initialiseDefaultWeights() {
+  void initialiseDefaultWeights(std::default_random_engine &gen) {
     // Initialise all weights with random values from normal distribution with
     // mean 0 and stdandard deviation 1, divided by the square root of the
     // number of input connections.
-    static std::default_random_engine generator(std::time(nullptr));
     std::normal_distribution<float> distribution(0, 1.0f);
     for (unsigned i = 0; i < inputs->size(); ++i) {
-      float weight = distribution(generator) / std::sqrt(inputs->size());
+      float weight = distribution(gen) / std::sqrt(inputs->size());
       weights.push_back(weight);
     }
-    bias = distribution(generator);
+    bias = distribution(gen);
   }
 
   void feedForward(unsigned mb) {
@@ -291,9 +290,9 @@ public:
     }
   }
 
-  void initialiseDefaultWeights() override {
+  void initialiseDefaultWeights(std::default_random_engine &gen) override {
     for (auto &neuron : neurons) {
-      neuron.initialiseDefaultWeights();
+      neuron.initialiseDefaultWeights(gen);
     }
   }
 
@@ -431,9 +430,9 @@ public:
     UNREACHABLE();
   }
 
-  void initialiseDefaultWeights() override {
+  void initialiseDefaultWeights(std::default_random_engine &gen) override {
     for (auto &neuron : neurons) {
-      neuron.initialiseDefaultWeights();
+      neuron.initialiseDefaultWeights(gen);
     }
   }
 
@@ -639,19 +638,18 @@ public:
     }
   }
 
-  void initialiseDefaultWeights() override {
-    static std::default_random_engine generator(std::time(nullptr));
+  void initialiseDefaultWeights(std::default_random_engine &gen) override {
     std::normal_distribution<float> distribution(0, 1.0f);
     for (unsigned fm = 0; fm < weights.shape()[0]; ++fm) {
       for (unsigned a = 0; a < weights.shape()[1]; ++a) {
         for (unsigned b = 0; b < weights.shape()[2]; ++b) {
           for (unsigned c = 0; c < weights.shape()[3]; ++c) {
             weights[fm][a][b][c] =
-                distribution(generator) / std::sqrt(inputs->size());
+                distribution(gen) / std::sqrt(inputs->size());
           }
         }
       }
-      bias[fm] = distribution(generator);
+      bias[fm] = distribution(gen);
     }
   }
 
@@ -820,7 +818,9 @@ public:
     }
   }
 
-  void initialiseDefaultWeights() override { /* Skip */ }
+  void initialiseDefaultWeights(std::default_random_engine&) override {
+    /* Skip */
+  }
 
   void feedForward(unsigned mb) override {
     // For each neuron in this layer.
@@ -911,18 +911,19 @@ class Network {
   InputLayer<mbSize, inputX, inputY> inputLayer;
   SoftMaxLayerTy *softMaxLayer;
   std::vector<LayerTy*> layers;
+  std::default_random_engine generator;
 
 public:
   Network(Params params, std::vector<LayerTy*> layers_) :
-      params(params), layers(layers_) {
+      params(params), layers(layers_), generator(params.seed) {
     softMaxLayer = new SoftMaxLayerTy(params.learningRate, params.lambda);
     layers.push_back(softMaxLayer);
     // Set neuron inputs.
     layers[0]->setInputs(&inputLayer);
-    layers[0]->initialiseDefaultWeights();
+    layers[0]->initialiseDefaultWeights(generator);
     for (unsigned i = 1; i < layers.size(); ++i) {
       layers[i]->setInputs(layers[i - 1]);
-      layers[i]->initialiseDefaultWeights();
+      layers[i]->initialiseDefaultWeights(generator);
     }
     // Set neuron outputs.
     for (unsigned i = 0; i < layers.size() - 1; ++i) {
@@ -1023,7 +1024,8 @@ public:
     for (unsigned epoch = 0; epoch < params.numEpochs; ++epoch) {
       auto epochStart = std::chrono::high_resolution_clock::now();
       // Identically randomly shuffle the training images and labels.
-      unsigned seed = std::time(nullptr);
+      std::uniform_int_distribution<unsigned> distribution;
+      unsigned seed = distribution.operator ()(generator);
       std::shuffle(data.getTrainingLabels().begin(),
                    data.getTrainingLabels().end(),
                    std::default_random_engine(seed));

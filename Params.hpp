@@ -7,6 +7,7 @@ struct Params {
   unsigned  numEpochs;
   float     learningRate;
   float     lambda;
+  unsigned  seed = 1;
   unsigned  numValidationImages;
   unsigned  numTrainingImages;
   unsigned  numTestImages;
@@ -22,6 +23,7 @@ struct Params {
     std::cout << "Minibatch size    " << mbSize << "\n";
     std::cout << "Learning rate     " << learningRate << "\n";
     std::cout << "Lambda            " << lambda << "\n";
+    std::cout << "Seed              " << seed << "\n";
     std::cout << "Training images   " << numTrainingImages << "\n";
     std::cout << "Testing images    " << numTestImages << "\n";
     std::cout << "Validation images " << numValidationImages << "\n";
