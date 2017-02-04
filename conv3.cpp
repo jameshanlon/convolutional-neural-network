@@ -14,7 +14,7 @@ int main(void) {
   params.lambda = 0.1f;
   params.seed = std::time(nullptr);
   params.numValidationImages = 0;
-  params.numTrainingImages = 10000;
+  params.numTrainingImages = 60000;
   params.numTestImages = 10000;
   params.monitorTrainingAccuracy = true;
   params.dump(mbSize, init.default_num_threads());

@@ -25,13 +25,13 @@ int main(void) {
   Network<mbSize, 28, 28, 10, 100,
           CrossEntropyCost::compute,
           CrossEntropyCost::delta> network(params, {
-      new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 20,
+      new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 4,
                     ReLU::compute, ReLU::deriv>(params),
-      new MaxPoolLayer<mbSize, 2, 2, 24, 24, 20>(),
-      new ConvLayer<mbSize, 5, 5, 20, 12, 12, 20, 10,
+      new MaxPoolLayer<mbSize, 2, 2, 24, 24, 4>(),
+      new ConvLayer<mbSize, 5, 5, 4, 12, 12, 4, 2,
                     ReLU::compute, ReLU::deriv>(params),
-      new MaxPoolLayer<mbSize, 2, 2, 8, 8, 10>(),
-      new FullyConnectedLayer<mbSize, 100, 4*4*10,
+      new MaxPoolLayer<mbSize, 2, 2, 8, 8, 2>(),
+      new FullyConnectedLayer<mbSize, 100, 4*4*2,
                               Sigmoid::compute,
                               Sigmoid::deriv>(params)});
   // Run it.

@@ -9,7 +9,7 @@ int main(void) {
   tbb::task_scheduler_init init;
   constexpr unsigned mbSize = 10;
   Params params;
-  params.numEpochs = 200;
+  params.numEpochs = 100;
   params.learningRate = 0.5f;
   params.lambda = 0.1f;
   params.seed = std::time(nullptr);
