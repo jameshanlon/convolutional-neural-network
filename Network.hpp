@@ -673,13 +673,11 @@ public:
           for (unsigned fm = 0; fm < numFMs; ++fm) {
             for (unsigned a = 0; a < weights.shape()[1]; ++a) {
               for (unsigned b = 0; b < weights.shape()[2]; ++b) {
-                for (unsigned c = 0; c < weights.shape()[3]; ++c) {
-                  if (a <= x && b <= y && c == z &&
-                      x - a < neurons.shape()[1] &&
-                      y - b < neurons.shape()[2]) {
-                    float ne = neurons[fm][x - a][y - b]->errors[mb];
-                    error += weights[fm][a][b][c] * ne;
-                  }
+                if (a <= x && b <= y &&
+                    x - a < neurons.shape()[1] &&
+                    y - b < neurons.shape()[2]) {
+                  float ne = neurons[fm][x - a][y - b]->errors[mb];
+                  error += weights[fm][a][b][z] * ne;
                 }
               }
             }
