@@ -1039,7 +1039,7 @@ public:
         auto mbStart = std::chrono::high_resolution_clock::now();
         updateMiniBatch(data.getTrainingImages().begin() + i,
                         data.getTrainingLabels().begin() + i,
-                        data.getTrainingImages().size());
+                        mbSize);
         auto mbEnd = std::chrono::high_resolution_clock::now();
         auto ms =
           std::chrono::duration_cast<std::chrono::milliseconds>(mbEnd-mbStart);
