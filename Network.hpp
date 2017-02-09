@@ -639,13 +639,16 @@ public:
   }
 
   void initialiseDefaultWeights(std::default_random_engine &gen) override {
+    // Initialise weights random distribution of mean 0 and standard deviation
+    // 1, then scale it by 1/sqrt(number of inputs).
     std::normal_distribution<float> distribution(0, 1.0f);
+    float scale =
+        std::sqrt(weights.shape()[1] * weights.shape()[2] * weights.shape()[3]);
     for (unsigned fm = 0; fm < weights.shape()[0]; ++fm) {
       for (unsigned a = 0; a < weights.shape()[1]; ++a) {
         for (unsigned b = 0; b < weights.shape()[2]; ++b) {
           for (unsigned c = 0; c < weights.shape()[3]; ++c) {
-            weights[fm][a][b][c] =
-                distribution(gen) / std::sqrt(inputs->size());
+            weights[fm][a][b][c] = distribution(gen) / scale;
           }
         }
       }
