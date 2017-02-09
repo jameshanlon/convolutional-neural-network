@@ -561,9 +561,9 @@ public:
     for (unsigned a = 0; a < weights.shape()[1]; ++a) {
       for (unsigned b = 0; b < weights.shape()[2]; ++b) {
         for (unsigned c = 0; c < weights.shape()[3]; ++c) {
-          unsigned x = this->x + a;
-          unsigned y = this->y + b;
-          float input = inputs->getNeuron(x, y, c).activations[mb];
+          unsigned inputX = this->x + a;
+          unsigned inputY = this->y + b;
+          float input = inputs->getNeuron(inputX, inputY, c).activations[mb];
           weightedInput += input * weights[this->z][a][b][c];
         }
       }
