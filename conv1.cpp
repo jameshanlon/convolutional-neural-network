@@ -22,13 +22,15 @@ int main(void) {
   Data data(params);
   // Create the network.
   std::cout << "Creating the network\n";
-  Network<mbSize, 28, 28, 10, 100,
+  constexpr unsigned conv1FMs = 8;
+  constexpr unsigned fcSize = 100;
+  Network<mbSize, 28, 28, 10, fcSize,
           CrossEntropyCost::compute,
           CrossEntropyCost::delta> network(params, {
-      new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, 4,
+      new ConvLayer<mbSize, 5, 5, 1, 28, 28, 1, conv1FMs,
                     ReLU::compute, ReLU::deriv>(params),
-      new MaxPoolLayer<mbSize, 2, 2, 24, 24,4>(),
-      new FullyConnectedLayer<mbSize, 100, 12*12*4,
+      new MaxPoolLayer<mbSize, 2, 2, 24, 24, conv1FMs>(),
+      new FullyConnectedLayer<mbSize, fcSize, 24*24*conv1FMs,
                               Sigmoid::compute,
                               Sigmoid::deriv>(params)});
   // Run it.
