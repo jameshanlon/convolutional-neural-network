@@ -66,7 +66,7 @@ static inline unsigned getY(unsigned index, unsigned dimX, unsigned dimY) {
   return (index / dimX) % dimY;
 }
 static inline unsigned getZ(unsigned index, unsigned dimX, unsigned dimY) {
-  return index / (dimX * dimY);
+  return (index / (dimX * dimY)) /* % dimZ */;
 }
 static inline unsigned getIndex(unsigned x, unsigned y, unsigned z,
                                 unsigned dimX, unsigned dimY) {
