@@ -15,6 +15,7 @@ struct Params {
   bool      monitorEvaluationCost     = false;
   bool      monitorTrainingAccuracy   = false;
   bool      monitorTrainingCost       = false;
+  unsigned  monitorInterval = 1000;
   void dump(unsigned mbSize /* mbSize is a template param */,
             unsigned numThreads /* returned by TBB object */) {
     std::cout << "=============================\n";
@@ -29,6 +30,7 @@ struct Params {
     std::cout << "Training images   " << numTrainingImages << "\n";
     std::cout << "Testing images    " << numTestImages << "\n";
     std::cout << "Validation images " << numValidationImages << "\n";
+    std::cout << "Monitor interval  " << monitorInterval << "\n";
     std::cout << "=============================\n";
   }
 };

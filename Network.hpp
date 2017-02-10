@@ -1070,6 +1070,38 @@ public:
         float imagesPerSec = (float(mbSize) / ms.count()) * 1000.0f;
         std::cout << "\rMinibatch " << i << " / " << numTrainingImages
                   << " (" << imagesPerSec << " imgs/s)";
+        if (i % params.monitorInterval == 0) {
+          std::cout << '\r' << std::string(100, ' ');
+          // Evaluate the test set.
+          if (params.monitorEvaluationAccuracy) {
+            unsigned result = evaluateAccuracy(data.getValidationImages(),
+                                               data.getValidationLabels());
+            std::cout << '\r' << std::string(100, ' ');
+            std::cout << "\rAccuracy on evaluation data: "
+                      << result << " / " << data.getValidationImages().size()
+                      << '\n';
+          }
+          if (params.monitorEvaluationCost) {
+            float cost = evaluateTotalCost(data.getValidationImages(),
+                                           data.getValidationLabels());
+            std::cout << '\r' << std::string(100, ' ');
+            std::cout << "\rCost on evaluation data: " << cost << "\n";
+          }
+          if (params.monitorTrainingAccuracy) {
+            unsigned result = evaluateAccuracy(data.getTestImages(),
+                                               data.getTestLabels());
+            std::cout << '\r' << std::string(100, ' ');
+            std::cout << "\rAccuracy on test data: "
+                      << result << " / " << data.getTestImages().size()
+                      << '\n';
+          }
+          if (params.monitorTrainingCost) {
+            float cost = evaluateTotalCost(data.getTestImages(),
+                                           data.getTestLabels());
+            std::cout << '\r' << std::string(100, ' ');
+            std::cout << "\rCost on test data: " << cost << "\n";
+          }
+        }
       }
       std::cout << '\n';
       // Display end of epoch and time.
@@ -1077,30 +1109,6 @@ public:
       auto s =
         std::chrono::duration_cast<std::chrono::seconds>(epochEnd-epochStart);
       std::cout << "Epoch " << epoch << " complete in " << s.count() << " s.\n";
-      // Evaluate the test set.
-      if (params.monitorEvaluationAccuracy) {
-        unsigned result = evaluateAccuracy(data.getValidationImages(),
-                                           data.getValidationLabels());
-        std::cout << "Accuracy on evaluation data: "
-                  << result << " / " << data.getValidationImages().size()
-                  << '\n';
-      }
-      if (params.monitorEvaluationCost) {
-        float cost = evaluateTotalCost(data.getValidationImages(),
-                                       data.getValidationLabels());
-        std::cout << "Cost on evaluation data: " << cost << "\n";
-      }
-      if (params.monitorTrainingAccuracy) {
-        unsigned result = evaluateAccuracy(data.getTestImages(),
-                                           data.getTestLabels());
-        std::cout << "Accuracy on test data: "
-                  << result << " / " << data.getTestImages().size() << '\n';
-      }
-      if (params.monitorTrainingCost) {
-        float cost = evaluateTotalCost(data.getTestImages(),
-                                       data.getTestLabels());
-        std::cout << "Cost on test data: " << cost << "\n";
-      }
     }
   }
 };
