@@ -970,17 +970,42 @@ public:
     }
   }
 
+  float imageCost(Image &image, uint8_t label,
+                  unsigned numImages, float regularisation, unsigned mb) {
+    inputLayer.setImage(image, mb);
+    feedForward(mb);
+    float cost = softMaxLayer->computeOutputCost(label, mb) / numImages;
+    cost += regularisation;
+    return cost;
+  }
+
   /// Calculate the total cost for a dataset.
-  float evaluateTotalCost(std::vector<Image> &images,
-                          std::vector<uint8_t> &labels) {
+  /// Parallelise over the test images (up to the minibatch size).
+  float evaluateTotalCost(std::vector<Image> &testImages,
+                          std::vector<uint8_t> &testLabels) {
+    float regularisation = 0.5f * (params.lambda / testImages.size())
+                            * softMaxLayer->sumSquaredWeights();
     float cost = 0.0f;
-    for (unsigned i = 0; i < images.size(); ++i) {
-      inputLayer.setImage(images[i], 0);
-      feedForward(0);
-      cost += softMaxLayer->computeOutputCost(labels[i], 0) / images.size();
-      // Add the regularisation term.
-      float sumSquaredWeights = softMaxLayer->sumSquaredWeights();
-      cost += 0.5f * (params.lambda / images.size()) * sumSquaredWeights;
+    for (unsigned i = 0, end = testImages.size(); i < end; i += mbSize) {
+      auto mbStart = std::chrono::high_resolution_clock::now();
+      // Parallel reduce over the minibatch.
+      cost +=
+        tbb::parallel_reduce(
+          tbb::blocked_range<size_t>(0, mbSize), 0.0f,
+          [&](const tbb::blocked_range<size_t> &r, float total) {
+            for (size_t mb = r.begin(); mb < r.end(); ++mb) {
+              total += imageCost(*(testImages.begin() + i + mb),
+                                 *(testLabels.begin() + i + mb),
+                                 testImages.size(), regularisation, mb);
+            }
+            return total;
+          }, std::plus<float>());
+      auto mbEnd = std::chrono::high_resolution_clock::now();
+      auto ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(mbEnd-mbStart);
+      float imagesPerSec = (float(mbSize) / ms.count()) * 1000.0f;
+      std::cout << "\rEvaluate cost " << i << " / " << end
+                << " (" << imagesPerSec << " imgs/s)";
     }
     return cost;
   }
@@ -992,7 +1017,7 @@ public:
   }
 
   /// Evaluate the test set and return the number of correct classifications.
-  /// Parallelise the over the test images (up to the minibatch size).
+  /// Parallelise over the test images (up to the minibatch size).
   unsigned evaluateAccuracy(std::vector<Image> &testImages,
                             std::vector<uint8_t> &testLabels) {
     unsigned result = 0;
@@ -1013,10 +1038,9 @@ public:
       auto ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(mbEnd-mbStart);
       float imagesPerSec = (float(mbSize) / ms.count()) * 1000.0f;
-      std::cout << "\rTest minibatch " << i << " / " << end
+      std::cout << "\rEvaluate accuracy " << i << " / " << end
                 << " (" << imagesPerSec << " imgs/s)";
     }
-    std::cout << '\n';
     return result;
   }
 
