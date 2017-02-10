@@ -49,8 +49,8 @@ x_image = tf.reshape(x, [-1, 28, 28, 1])
 
 LEARNING_RATE = 0.03
 BATCH_SIZE = 10
-CONV1_CHANS = 2
-CONV2_CHANS = 1
+CONV1_CHANS = 8
+CONV2_CHANS = 4
 FC_SIZE = 100
 
 # First conv layer

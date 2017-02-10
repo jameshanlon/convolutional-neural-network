@@ -23,7 +23,7 @@ int main(void) {
   // Create the network.
   std::cout << "Creating the network\n";
   constexpr unsigned conv1FMs = 8;
-  constexpr unsigned conv2FMs = 8;
+  constexpr unsigned conv2FMs = 4;
   constexpr unsigned fcSize = 100;
   Network<mbSize, 28, 28, 10, fcSize,
           CrossEntropyCost::compute,
