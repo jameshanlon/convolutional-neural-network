@@ -12,6 +12,7 @@ using Image = std::vector<float>;
 
 class Data {
 
+  static constexpr bool debug = false;
   static constexpr unsigned imageHeight = 28;
   static constexpr unsigned imageWidth = 28;
 
@@ -30,13 +31,16 @@ class Data {
       std::cout << "Error opening file " << filename << '\n';
       std::exit(1);
     }
+    std::cout << "Reading labels: " << filename << "\n";
     uint32_t magicNumber, numItems;
     file.read(reinterpret_cast<char*>(&magicNumber), 4);
     file.read(reinterpret_cast<char*>(&numItems), 4);
     magicNumber = __builtin_bswap32(magicNumber);
     numItems = __builtin_bswap32(numItems);
-    std::cout << "Magic number: " << magicNumber << "\n";
-    std::cout << "Num items:    " << numItems << "\n";
+    if (debug) {
+      std::cout << "Magic number: " << magicNumber << "\n";
+      std::cout << "Num items:    " << numItems << "\n";
+    }
     for (unsigned i = 0; i < numItems; ++i) {
       uint8_t label;
       file.read(reinterpret_cast<char*>(&label), 1);
@@ -53,6 +57,7 @@ class Data {
       std::cout << "Error opening file " << filename << '\n';
       std::exit(1);
     }
+    std::cout << "Reading images: " << filename << "\n";
     uint32_t magicNumber, numImages, numRows, numCols;
     file.read(reinterpret_cast<char*>(&magicNumber), 4);
     file.read(reinterpret_cast<char*>(&numImages), 4);
@@ -62,10 +67,12 @@ class Data {
     numImages = __builtin_bswap32(numImages);
     numRows = __builtin_bswap32(numRows);
     numCols = __builtin_bswap32(numCols);
-    std::cout << "Magic number: " << magicNumber << "\n";
-    std::cout << "Num images:   " << numImages << "\n";
-    std::cout << "Num rows:     " << numRows << "\n";
-    std::cout << "Num cols:     " << numCols << "\n";
+    if (debug) {
+      std::cout << "Magic number: " << magicNumber << "\n";
+      std::cout << "Num images:   " << numImages << "\n";
+      std::cout << "Num rows:     " << numRows << "\n";
+      std::cout << "Num cols:     " << numCols << "\n";
+    }
     assert(numRows == imageHeight && numCols == imageWidth &&
            "unexpected image size");
     for (unsigned i = 0; i < numImages; ++i) {
@@ -87,11 +94,9 @@ class Data {
 public:
   Data(Params params) {
     // Labels.
-    std::cout << "Reading labels\n";
     readLabels("train-labels-idx1-ubyte", trainingLabels);
     readLabels("t10k-labels-idx1-ubyte", testLabels);
     //Images.
-    std::cout << "Reading images\n";
     readImages("train-images-idx3-ubyte", trainingImages);
     readImages("t10k-images-idx3-ubyte", testImages);
     // Reduce number of training images and use them for test (for debugging).
