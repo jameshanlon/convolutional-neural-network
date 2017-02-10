@@ -3,6 +3,8 @@
 This repository contains a simple C++ implementation of a convolutional neural
 network. It is based on the explanation and examples provided in the
 [Neural Networks and Deep Learning online book](http://neuralnetworksanddeeplearning.com/).
+There are more details about the code and workings of convolutional networks on
+[my webiste](http://www.jwhanlon.com/a-convolutional-neural-network-from-scratch.html).
 
 Build requirements:
  - CMake
@@ -69,14 +71,14 @@ Features implemented:
 - Stochastic gradient descent.
 - Quadratic and cross entropy cost functions.
 - Sigmoid and rectified-linear activation functions.
-- Weight initialisation from normally-distributed random numbers.
 - Minibatching.
 - Regularisation.
 - Fully-connected and soft-max layers.
 - Convolutional and max-pooling layers.
 - Convolutional feature maps.
 
-Possible features to add:
+Possible features that could be added:
 
 - Padding in the convolutional layer to maintain the input size.
 - Dropout to help prevent overfitting.
+- ...
