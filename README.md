@@ -4,7 +4,7 @@ This repository contains a simple C++ implementation of a convolutional neural
 network. It is based on the explanation and examples provided in the
 [Neural Networks and Deep Learning online book](http://neuralnetworksanddeeplearning.com/).
 There are more details about the code and workings of convolutional networks on
-[my webiste](http://www.jwhanlon.com/a-convolutional-neural-network-from-scratch.html).
+[my website](http://www.jameswhanlon.com/a-convolutional-neural-network-from-scratch.html).
 
 Build requirements:
  - CMake
